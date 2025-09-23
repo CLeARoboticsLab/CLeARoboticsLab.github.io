@@ -1,6 +1,6 @@
 ---
 name:  Ryan Park
-position: undergraduate
+position: alumni
 avatar: ryan_park.jpg
 ---
 
@@ -21,8 +21,6 @@ Austin, TX 78705
 
 [Ryan Park](https://www.linkedin.com/in/ryanjpark03/) is an undergraduate student studying Computer Science in the College of Natural Sciences as a Polymathic Scholar as well as Aerospace Engineering in the Cockrell College of Engineering. Ryan's main interests lie in theory development; currnetly in using kernel methods in place of neural ODE's.
 
-Besides helping with research, Ryan is also a part of the Undergraduate Computational Finance Club, a competitive club dedicated to learning and implementing trading strategies. Ryan has previously worked at Boeing as a software engineer, focusing primarily on improving sensor fusion algorithms. 
+Besides helping with research, Ryan is also a part of the Undergraduate Computational Finance Club, a competitive club dedicated to learning and implementing trading strategies. Ryan has previously worked at Boeing as a software engineer, focusing primarily on improving sensor fusion algorithms.
 
 In his free time, Ryan enjoys rock climbing, cooking Korean food, and light reading.
-
-

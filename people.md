@@ -60,6 +60,7 @@ permalink: /people/
 
 | Who are they | When were they here | Where they went |
 | :------------- |:-------------| :-----------|
+| [Ryan Park](https://www.linkedin.com/in/ryanjpark03/) | Undergraduate student in CS (2023-2025) | PhD student in ME at UC Berkeley |
 | [Nick Strohmeyer](https://www.linkedin.com/in/nick-strohmeyer-209a3a157/) | MS student in ECE (2022-2024) | MITRE |
 | [Antonio Lopez](https://mx.linkedin.com/in/antonio-lopez-guzman-55a060213) | MS student in ASE (2022-2024) | Pacific Northwest National Lab |
 | [Andriy Malyshchak](https://www.linkedin.com/in/andriy-malyshchak-a19709232) | Undergraduate student in ECE (2022-2023) | Texas Robotics
