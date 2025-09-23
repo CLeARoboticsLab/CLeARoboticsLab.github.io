@@ -17,6 +17,6 @@ Anna Hiss Gym 2.204<br>
 303 E 21st Street #D244,
 Austin, TX 78705
 
-Ali Pouamou is a third-year undergraduate studying simultaneously aerospace engineering and mathematics at the University of Texas at Austin. He wants to explore stochastic formulations for optimization and control theories.
+Ali Pouamou is a third-year undergraduate studying simultaneously aerospace engineering and mathematics at the University of Texas at Austin. He desires to explore stochastic formulations for optimization and control theories.
 
 When he's neither hanging out at the Universiry Catholic Center nor helping out at the lab, Ali enjoys going on walks, exploring bookstores, reading and watching animes.
