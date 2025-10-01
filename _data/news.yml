@@ -1,3 +1,11 @@
+- date: 2025-10-01
+  details: >-
+    We submitted <a href="https://arxiv.org/abs/2406.03565">Second-Order Algorithms for Finding Local Nash Equilibria in Zero-Sum Games</a> to Journal of Machine Learning Research.
+
+- date: 2025-10-01
+  details: >-
+    We submitted <a href="https://www.arxiv.org/abs/2509.23948">DiBS-MTL: Transformation-Invariant Multitask Learning with Direction Oracles</a>.
+    
 - date: 2025-09-18
   details: >-
     Our paper <a href="https://arxiv.org/pdf/2505.14817">Cooperative Bargaining Games Without Utilities: Mediated Solutions from Direction Oracles</a> was accepted to NeurIPS 2025.
