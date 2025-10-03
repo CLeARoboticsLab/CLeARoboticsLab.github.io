@@ -1,4 +1,8 @@
-    
+
+- date: 2025-10-03
+  details: >-
+    Check out our <a href="https://kaugsrha.github.io/dibs-on-neurips">labs research on cooperative bargaining</a> recently accepted at NeurIPS 2025!.
+  
 - date: 2025-10-03
   details: >-
     We submitted <a href="https://arxiv.org/abs/2510.01456">SCOPED: Score-Curvature Out-of-distribution Proximity Evaluator for Diffusion</a> and <a href="https://arxiv.org/abs/2510.01457">Fixing That Free Lunch: When, Where, and Why Synthetic Data Fails in Model-Based Policy Optimization</a>.
