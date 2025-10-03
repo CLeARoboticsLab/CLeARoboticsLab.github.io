@@ -1,3 +1,8 @@
+    
+- date: 2025-10-03
+  details: >-
+    We submitted <a href="https://arxiv.org/abs/2510.01456">SCOPED: Score-Curvature Out-of-distribution Proximity Evaluator for Diffusion</a> and <a href="https://arxiv.org/abs/2510.01457">Fixing That Free Lunch: When, Where, and Why Synthetic Data Fails in Model-Based Policy Optimization</a>.
+
 - date: 2025-10-01
   details: >-
     Our paper <a href="https://arxiv.org/pdf/2310.00468">When Should a Leader Act Suboptimally? The Role of Inferability in Repeated Stackelberg Games</a> was accepted to T-AC.
