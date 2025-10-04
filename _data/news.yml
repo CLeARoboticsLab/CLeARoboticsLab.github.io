@@ -1,7 +1,10 @@
-    
-- date: 2025-10-03
+- date: 2025-10-01
   details: >-
     We submitted <a href="https://arxiv.org/abs/2510.01456">SCOPED: Score-Curvature Out-of-distribution Proximity Evaluator for Diffusion</a> and <a href="https://arxiv.org/abs/2510.01457">Fixing That Free Lunch: When, Where, and Why Synthetic Data Fails in Model-Based Policy Optimization</a>.
+
+- date: 2025-10-01
+  details: >-
+    We submitted <a href="https://www.arxiv.org/abs/2509.23948">DiBS-MTL: Transformation-Invariant Multitask Learning with Direction Oracles</a>.
 
 - date: 2025-10-01
   details: >-
@@ -11,13 +14,9 @@
   details: >-
     We submitted <a href="https://arxiv.org/abs/2406.03565">Second-Order Algorithms for Finding Local Nash Equilibria in Zero-Sum Games</a> to Journal of Machine Learning Research.
 
-- date: 2025-10-01
-  details: >-
-    We submitted <a href="https://www.arxiv.org/abs/2509.23948">DiBS-MTL: Transformation-Invariant Multitask Learning with Direction Oracles</a>.
-
 - date: 2025-09-18
   details: >-
-    Our paper <a href="https://arxiv.org/pdf/2505.14817">Cooperative Bargaining Games Without Utilities: Mediated Solutions from Direction Oracles</a> was accepted to NeurIPS 2025.
+    Our paper <a href="https://arxiv.org/pdf/2505.14817">Cooperative Bargaining Games Without Utilities: Mediated Solutions from Direction Oracles</a> was accepted to NeurIPS 2025. Check out our project <a href="https://kaugsrha.github.io/dibs-on-neurips">website!</a>
 
 - date: 2025-08-01
   details: >-
