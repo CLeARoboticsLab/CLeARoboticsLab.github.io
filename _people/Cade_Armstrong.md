@@ -1,6 +1,6 @@
 ---
 name: Cade Armstrong
-position: undergraduate
+position: alumni
 avatar: cade_armstrong.jpg
 joined: 2023
 ---
