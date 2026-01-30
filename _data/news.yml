@@ -1,4 +1,8 @@
-- date: 2026-1-26
+- date: 2026-01-29
+  details: >-
+    We submitted <a href="https://arxiv.org/pdf/2601.20054>Game-Theoretic Autonomous Driving: A Graphs of Convex Sets Approach</a> to WAFR 2026.
+
+- date: 2026-01-26
   details: >-
     Our paper <a href="https://arxiv.org/abs/2510.01456">SCOPED: Score-Curvature Out-of-distribution Proximity Evaluator for Diffusion</a> was accepted to ICLR 2026.
 
