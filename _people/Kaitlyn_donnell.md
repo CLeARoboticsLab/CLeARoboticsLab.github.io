@@ -1,6 +1,6 @@
 ---
 name: Kaitlyn Donnel
-position: undergraduate
+position: alumni
 avatar: kaitlyn_donnel.jpeg
 ---
 

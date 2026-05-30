@@ -60,6 +60,8 @@ permalink: /people/
 
 | Who are they | When were they here | Where they went |
 | :------------- |:-------------| :-----------|
+| [Kaitlyn Donnel](https://www.linkedin.com/in/kaitlyndonnel/) | Undergraduate student in ASE (2024-2026) | Axiom Space |
+| [Nguyen Ly](https://www.linkedin.com/in/ngly712/) | Undergraduate student in ASE (2024-2025) | MS student in ASE at UT Austin |
 | [Cade Armstrong](https://www.linkedin.com/in/cade-armstrong-377b1b97/) | Undergraduate student in ASE (2023-2025) | PhD student in ASE at UT Austin |
 | [Ryan Park](https://www.linkedin.com/in/ryanjpark03/) | Undergraduate student in CS (2023-2025) | PhD student in ME at UC Berkeley |
 | [Nick Strohmeyer](https://www.linkedin.com/in/nick-strohmeyer-209a3a157/) | MS student in ECE (2022-2024) | MITRE |
