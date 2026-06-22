@@ -7,7 +7,7 @@ const STATE = {
   profiles: [],          // all profiles, for owner names + filter dropdown
   templates: [],          // stage_templates with .items
   projects: [],            // projects with .project_stages and .stage_history
-  newStageEditor: [],       // working list while creating a project: [{name, stale_after_weeks}]
+  newStageEditor: [],       // working list while creating a project: [{name, target_date}]
   openProjectId: null,
 };
 
@@ -66,15 +66,23 @@ function computeDerived(project) {
   const now = new Date();
   const ageWeeks = (now - new Date(project.created_at)) / WEEK_MS;
   const stageWeeks = current ? (now - new Date(current.entered_at)) / WEEK_MS : 0;
-  const threshold = (currentIndex >= 0 && stages[currentIndex]) ? stages[currentIndex].stale_after_weeks : 3;
+
+  // Staleness is based on the current stage's target_date if set;
+  // red = overdue, amber = due within 7 days, green = on track or no date set
+  const currentStage = currentIndex >= 0 ? stages[currentIndex] : null;
+  const targetDate = currentStage && currentStage.target_date ? new Date(currentStage.target_date) : null;
   let staleLevel = 'green';
-  if (stageWeeks >= threshold) staleLevel = 'red';
-  else if (stageWeeks >= threshold * 0.6) staleLevel = 'amber';
+  if (targetDate) {
+    const daysUntil = (targetDate - now) / (1000 * 3600 * 24);
+    if (daysUntil < 0) staleLevel = 'red';
+    else if (daysUntil < 7) staleLevel = 'amber';
+  }
+
   return {
     stages, history, current, currentIndex,
     totalStages: stages.length,
     remaining: Math.max(stages.length - 1 - currentIndex, 0),
-    ageWeeks, stageWeeks, threshold, staleLevel,
+    ageWeeks, stageWeeks, targetDate, staleLevel,
   };
 }
 
@@ -183,6 +191,11 @@ function renderProjectRow(project, d) {
     const cls = i === d.currentIndex ? 'dot current' : (i < d.currentIndex ? 'dot filled' : 'dot');
     return `<span class="${cls}"></span>`;
   }).join('');
+  const timingLabel = d.targetDate
+    ? (d.staleLevel === 'red'
+        ? `due ${fmtDate(d.targetDate.toISOString())}`
+        : `by ${fmtDate(d.targetDate.toISOString())}`)
+    : fmtWeeks(d.stageWeeks) + ' in stage';
   return `
     <div class="proj-row stale-${d.staleLevel}" data-open="${project.id}">
       <div class="avatar">${initials(owner.full_name)}</div>
@@ -193,7 +206,7 @@ function renderProjectRow(project, d) {
       <span class="badge">${escapeHtml(stageLabel)}</span>
       <div class="dots">${dots}</div>
       <div class="timing">
-        <div class="stage-time">${fmtWeeks(d.stageWeeks)} in stage</div>
+        <div class="stage-time">${timingLabel}</div>
         <div class="age">${fmtAge(d.ageWeeks)}</div>
       </div>
     </div>`;
@@ -208,7 +221,17 @@ function escapeHtml(s) {
 // ============================================================
 function loadTemplateIntoEditor(templateId) {
   const t = STATE.templates.find(t => t.id === templateId);
-  STATE.newStageEditor = t ? t.items.map(i => ({ name: i.name, stale_after_weeks: i.stale_after_weeks })) : [];
+  if (t) {
+    let offsetDays = 0;
+    STATE.newStageEditor = t.items.map(i => {
+      offsetDays += (i.stale_after_weeks || 3) * 7;
+      const d = new Date();
+      d.setDate(d.getDate() + offsetDays);
+      return { name: i.name, target_date: d.toISOString().slice(0, 10) };
+    });
+  } else {
+    STATE.newStageEditor = [];
+  }
   renderStageEditor();
 }
 
@@ -216,8 +239,8 @@ function renderStageEditor() {
   const box = document.getElementById('np-stage-editor');
   box.innerHTML = STATE.newStageEditor.map((s, i) => `
     <div class="stage-editor-row">
-      <input type="text" value="${escapeHtml(s.name)}" data-idx="${i}" class="se-name">
-      <input type="text" value="${s.stale_after_weeks}" data-idx="${i}" class="se-weeks" style="width:54px;" title="weeks before flagged stale">
+      <input type="text" value="${escapeHtml(s.name)}" data-idx="${i}" class="se-name" placeholder="Stage name">
+      <input type="date" value="${s.target_date || ''}" data-idx="${i}" class="se-date" style="width:160px;" title="Target completion date">
       <div class="order-btns">
         <button type="button" data-idx="${i}" data-dir="-1" class="se-move">▲</button>
         <button type="button" data-idx="${i}" data-dir="1" class="se-move">▼</button>
@@ -228,8 +251,8 @@ function renderStageEditor() {
   box.querySelectorAll('.se-name').forEach(el => el.addEventListener('input', e => {
     STATE.newStageEditor[+e.target.dataset.idx].name = e.target.value;
   }));
-  box.querySelectorAll('.se-weeks').forEach(el => el.addEventListener('input', e => {
-    STATE.newStageEditor[+e.target.dataset.idx].stale_after_weeks = Math.max(1, parseInt(e.target.value) || 3);
+  box.querySelectorAll('.se-date').forEach(el => el.addEventListener('input', e => {
+    STATE.newStageEditor[+e.target.dataset.idx].target_date = e.target.value || null;
   }));
   box.querySelectorAll('.se-remove').forEach(el => el.addEventListener('click', e => {
     STATE.newStageEditor.splice(+e.target.dataset.idx, 1); renderStageEditor();
@@ -262,7 +285,7 @@ async function submitNewProject(e) {
   if (e1) { msg.innerHTML = `<div class="msg error">${e1.message}</div>`; return; }
 
   const stageRows = STATE.newStageEditor.map((s, i) => ({
-    project_id: proj.id, name: s.name, sort_order: i + 1, stale_after_weeks: s.stale_after_weeks,
+    project_id: proj.id, name: s.name, sort_order: i + 1, target_date: s.target_date || null,
   }));
   const { error: e2 } = await supabaseClient.from('project_stages').insert(stageRows);
   if (e2) { msg.innerHTML = `<div class="msg error">${e2.message}</div>`; return; }
@@ -293,6 +316,15 @@ function openProjectModal(id) {
   }).join('');
   document.getElementById('pd-stage-label').textContent =
     `${d.current ? d.current.stage_name : '—'} · ${fmtWeeks(d.stageWeeks)} in stage · ${d.remaining} stage(s) remaining · ${fmtAge(d.ageWeeks)}`;
+
+  // Stage target dates editor
+  const stageDatesDiv = document.getElementById('pd-stage-dates');
+  stageDatesDiv.innerHTML = d.stages.map(s => `
+    <div class="stage-editor-row" style="margin-bottom:5px;">
+      <span style="flex:1; font-size:13px; color:var(--text);">${escapeHtml(s.name)}</span>
+      <input type="date" value="${s.target_date || ''}" data-stage-id="${s.id}"
+        class="pd-stage-date" style="width:160px;" ${editable ? '' : 'disabled'}>
+    </div>`).join('');
 
   document.getElementById('pd-venue').value = project.target_venue || '';
   document.getElementById('pd-deadline').value = project.target_deadline || '';
@@ -332,6 +364,15 @@ async function savePdDetails() {
     notes: document.getElementById('pd-notes').value || null,
   };
   const { error } = await supabaseClient.from('projects').update(updates).eq('id', project.id);
+
+  // Save each stage's target date
+  const dateInputs = document.querySelectorAll('.pd-stage-date');
+  for (const input of dateInputs) {
+    await supabaseClient.from('project_stages')
+      .update({ target_date: input.value || null })
+      .eq('id', input.dataset.stageId);
+  }
+
   const msg = document.getElementById('pd-msg');
   msg.innerHTML = error ? `<div class="msg error">${error.message}</div>` : `<div class="msg ok">Saved.</div>`;
   await loadAll(); renderAll();
@@ -409,7 +450,7 @@ function wireEvents() {
   });
   document.getElementById('np-template').addEventListener('change', e => loadTemplateIntoEditor(e.target.value));
   document.getElementById('np-add-stage').addEventListener('click', () => {
-    STATE.newStageEditor.push({ name: 'New stage', stale_after_weeks: 3 });
+    STATE.newStageEditor.push({ name: 'New stage', target_date: null });
     renderStageEditor();
   });
   document.getElementById('form-new-project').addEventListener('submit', submitNewProject);
