@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lab tracker · sign in</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="auth-wrap">
+  <h1>Lab project tracker</h1>
+  <div class="sub" id="subtitle">Sign in with your lab account</div>
+
+  <div class="auth-tabs">
+    <button id="tab-login" class="active">Log in</button>
+    <button id="tab-signup">Sign up</button>
+    <button id="tab-reset">Forgot password</button>
+  </div>
+
+  <div id="msg-box"></div>
+
+  <form id="form-login">
+    <div class="field"><label>Email</label><input type="email" id="login-email" required></div>
+    <div class="field"><label>Password</label><input type="password" id="login-password" required></div>
+    <button type="submit" class="primary" style="width:100%">Log in</button>
+  </form>
+
+  <form id="form-signup" style="display:none">
+    <div class="field"><label>Full name</label><input type="text" id="signup-name" required></div>
+    <div class="field"><label>Email</label><input type="email" id="signup-email" required></div>
+    <div class="field"><label>Password (8+ characters)</label><input type="password" id="signup-password" minlength="8" required></div>
+    <button type="submit" class="primary" style="width:100%">Create account</button>
+  </form>
+
+  <form id="form-reset" style="display:none">
+    <div class="field"><label>Email</label><input type="email" id="reset-email" required></div>
+    <button type="submit" class="primary" style="width:100%">Send reset link</button>
+  </form>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script>
+const tabs = { login: document.getElementById('tab-login'), signup: document.getElementById('tab-signup'), reset: document.getElementById('tab-reset') };
+const forms = { login: document.getElementById('form-login'), signup: document.getElementById('form-signup'), reset: document.getElementById('form-reset') };
+const subtitle = document.getElementById('subtitle');
+const subtitles = { login: 'Sign in with your lab account', signup: 'Create your lab account', reset: "We'll email you a reset link" };
+
+function showTab(name) {
+  Object.keys(tabs).forEach(k => {
+    tabs[k].classList.toggle('active', k === name);
+    forms[k].style.display = k === name ? 'block' : 'none';
+  });
+  subtitle.textContent = subtitles[name];
+  clearMsg();
+}
+tabs.login.onclick = () => showTab('login');
+tabs.signup.onclick = () => showTab('signup');
+tabs.reset.onclick = () => showTab('reset');
+
+function showMsg(text, type) {
+  document.getElementById('msg-box').innerHTML = `<div class="msg ${type}">${text}</div>`;
+}
+function clearMsg() { document.getElementById('msg-box').innerHTML = ''; }
+
+// If already logged in, skip straight to the dashboard
+supabaseClient.auth.getSession().then(({ data }) => {
+  if (data.session) window.location.href = 'dashboard.html';
+});
+
+forms.login.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearMsg();
+  const email = document.getElementById('login-email').value;
+  const password = document.getElementById('login-password').value;
+  const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+  if (error) return showMsg(error.message, 'error');
+  window.location.href = 'dashboard.html';
+});
+
+forms.signup.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearMsg();
+  const full_name = document.getElementById('signup-name').value;
+  const email = document.getElementById('signup-email').value;
+  const password = document.getElementById('signup-password').value;
+  const { error } = await supabaseClient.auth.signUp({
+    email, password,
+    options: { data: { full_name } }
+  });
+  if (error) return showMsg(error.message, 'error');
+  showMsg('Account created — you can log in now (or confirm your email first, if your project requires that).', 'ok');
+  showTab('login');
+});
+
+forms.reset.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearMsg();
+  const email = document.getElementById('reset-email').value;
+  const redirectTo = new URL('reset-password.html', window.location.href).toString();
+  const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo });
+  if (error) return showMsg(error.message, 'error');
+  showMsg('Check your email for a reset link.', 'ok');
+});
+</script>
+</body>
+</html>
