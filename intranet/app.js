@@ -27,20 +27,27 @@ const WEEK_MS = 7 * 24 * 3600 * 1000;
 })();
 
 async function loadAll() {
-  const [{ data: profiles }, { data: templates }, { data: templateItems }, { data: projects }] = await Promise.all([
-    supabaseClient.from('profiles').select('*').order('full_name'),
-    supabaseClient.from('stage_templates').select('*').order('name'),
-    supabaseClient.from('stage_template_items').select('*').order('sort_order'),
-    supabaseClient.from('projects').select(`
+  // Non-PI users only fetch their own projects — PI fetches everything
+  let projectQuery = supabaseClient.from('projects').select(`
       *,
       owner:profiles(id, full_name, role),
       project_stages(*),
       stage_history(*)
-    `).order('created_at', { ascending: false }),
-  ]);
+    `).order('created_at', { ascending: false });
 
+  // We need the profile before we can scope the query, so fetch it first
+  const { data: profiles } = await supabaseClient.from('profiles').select('*').order('full_name');
   STATE.profiles = profiles || [];
   STATE.profile = STATE.profiles.find(p => p.id === STATE.user.id) || null;
+
+  if (!isPI()) projectQuery = projectQuery.eq('owner_id', STATE.user.id);
+
+  const [{ data: templates }, { data: templateItems }, { data: projects }] = await Promise.all([
+    supabaseClient.from('stage_templates').select('*').order('name'),
+    supabaseClient.from('stage_template_items').select('*').order('sort_order'),
+    projectQuery,
+  ]);
+
   STATE.templates = (templates || []).map(t => ({
     ...t,
     items: (templateItems || []).filter(i => i.template_id === t.id).sort((a, b) => a.sort_order - b.sort_order),
@@ -103,8 +110,9 @@ function initials(name) {
 // ============================================================
 function renderAll() {
   document.getElementById('whoami').textContent =
-    `${STATE.profile ? STATE.profile.full_name : ''} · ${isPI() ? 'PI view' : 'your lab'}`;
+    `${STATE.profile ? STATE.profile.full_name : ''} · ${isPI() ? 'PI view' : 'your projects'}`;
   document.getElementById('np-owner-field').style.display = isPI() ? 'block' : 'none';
+  document.getElementById('filter-owner').closest('select').style.display = isPI() ? 'inline-block' : 'none';
 
   renderFilterOptions();
   renderStats();
@@ -142,12 +150,17 @@ function renderFilterOptions() {
 function renderStats() {
   const active = STATE.projects.filter(p => p.status === 'active');
   const staleCount = active.filter(p => computeDerived(p).staleLevel === 'red').length;
-  const trainees = STATE.profiles.filter(p => p.role !== 'pi').length;
-  document.getElementById('stat-row').innerHTML = `
-    <div class="stat"><div class="n">${active.length}</div><div class="l">active projects</div></div>
-    <div class="stat"><div class="n">${trainees}</div><div class="l">trainees</div></div>
-    <div class="stat"><div class="n">${staleCount}</div><div class="l">stale (red)</div></div>
-  `;
+  if (isPI()) {
+    const trainees = STATE.profiles.filter(p => p.role !== 'pi').length;
+    document.getElementById('stat-row').innerHTML = `
+      <div class="stat"><div class="n">${active.length}</div><div class="l">active projects</div></div>
+      <div class="stat"><div class="n">${trainees}</div><div class="l">trainees</div></div>
+      <div class="stat"><div class="n">${staleCount}</div><div class="l">stale (red)</div></div>`;
+  } else {
+    document.getElementById('stat-row').innerHTML = `
+      <div class="stat"><div class="n">${active.length}</div><div class="l">active projects</div></div>
+      <div class="stat"><div class="n">${staleCount}</div><div class="l">overdue</div></div>`;
+  }
 }
 
 // ============================================================
