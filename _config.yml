@@ -30,6 +30,8 @@ nav:
     href:           "/people"
   - name:           "robots"
     href:           "/robots"
+  - name:           "intranet"
+    href:           "/intranet/auth.html"
 #  - name:           "blog"
 #    href:           "/blog"
 #  - name:           "resources"
