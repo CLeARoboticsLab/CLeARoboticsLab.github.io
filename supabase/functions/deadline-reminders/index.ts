@@ -8,9 +8,11 @@ const FROM_EMAIL = Deno.env.get("FROM_EMAIL") ?? "Lab Tracker <tracker@lab.edu>"
 const CRON_SECRET = Deno.env.get("CRON_SECRET")!;
 
 Deno.serve(async (req) => {
-  const auth = req.headers.get("Authorization");
-  if (auth !== `Bearer ${CRON_SECRET}`) {
-    return new Response("Unauthorized", { status: 401 });
+  //  const auth = req.headers.get("Authorization");
+  // if (auth !== `Bearer ${CRON_SECRET}`) {
+  const auth = req.headers.get("x-cron-secret");
+  if (auth !== CRON_SECRET) {
+     return new Response("Unauthorized", { status: 401 });
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {

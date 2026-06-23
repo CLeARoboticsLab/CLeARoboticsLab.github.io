@@ -19,7 +19,8 @@ jobs:
         run: |
           HTTP_STATUS=$(curl -s -o /tmp/response.txt -w "%{http_code}" \
             -X POST \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             -H "Content-Type: application/json" \
             "${{ secrets.SUPABASE_FUNCTION_URL }}/deadline-reminders")
           echo "HTTP status: $HTTP_STATUS"

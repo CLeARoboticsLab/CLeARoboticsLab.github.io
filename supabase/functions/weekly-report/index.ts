@@ -9,8 +9,10 @@ const CRON_SECRET = Deno.env.get("CRON_SECRET")!;
 
 Deno.serve(async (req) => {
   // Only allow requests from our scheduled GitHub Action
-  const auth = req.headers.get("Authorization");
-  if (auth !== `Bearer ${CRON_SECRET}`) {
+  //  const auth = req.headers.get("Authorization");
+  //  if (auth !== `Bearer ${CRON_SECRET}`) {
+  const auth = req.headers.get("x-cron-secret");
+  if (auth !== CRON_SECRET) {
     return new Response("Unauthorized", { status: 401 });
   }
 
