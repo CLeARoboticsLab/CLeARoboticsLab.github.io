@@ -1,0 +1,27 @@
+# .github/workflows/lab-tracker-deadline-reminders.yml
+# Calls the deadline-reminders Edge Function every day at 9 am UTC.
+#
+# Uses the same secrets as the weekly-report workflow:
+#   CRON_SECRET, SUPABASE_FUNCTION_URL
+
+name: Lab project tracker — deadline reminders
+
+on:
+  schedule:
+    - cron: '1 4 * * *'   # Daily 14:00 UTC
+  workflow_dispatch:        # Allow manual trigger
+
+jobs:
+  send-deadline-reminders:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call deadline-reminders function
+        run: |
+          HTTP_STATUS=$(curl -s -o /tmp/response.txt -w "%{http_code}" \
+            -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            "${{ secrets.SUPABASE_FUNCTION_URL }}/deadline-reminders")
+          echo "HTTP status: $HTTP_STATUS"
+          cat /tmp/response.txt
+          if [ "$HTTP_STATUS" != "200" ]; then exit 1; fi

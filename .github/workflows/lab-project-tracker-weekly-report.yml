@@ -1,0 +1,28 @@
+# .github/workflows/lab-tracker-weekly-report.yml
+# Calls the weekly-report Edge Function every Monday at 8 am UTC.
+#
+# Required GitHub Actions secrets (Settings → Secrets → Actions):
+#   CRON_SECRET          — a long random string you invent; also set in Supabase
+#   SUPABASE_FUNCTION_URL — e.g. https://jgjhqwkgjmvwmjttjasc.supabase.co/functions/v1
+
+name: Lab project tracker — weekly report
+
+on:
+  schedule:
+    - cron: '1 4 * * 1'   # Every Monday 14:00 UTC
+  workflow_dispatch:        # Allow manual trigger from the Actions tab
+
+jobs:
+  send-weekly-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call weekly-report function
+        run: |
+          HTTP_STATUS=$(curl -s -o /tmp/response.txt -w "%{http_code}" \
+            -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            "${{ secrets.SUPABASE_FUNCTION_URL }}/weekly-report")
+          echo "HTTP status: $HTTP_STATUS"
+          cat /tmp/response.txt
+          if [ "$HTTP_STATUS" != "200" ]; then exit 1; fi

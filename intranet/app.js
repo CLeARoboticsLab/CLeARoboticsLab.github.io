@@ -431,6 +431,17 @@ async function deleteProject() {
 // ============================================================
 // Modal plumbing + event wiring
 // ============================================================
+function updateReportButton() {
+  const ownerFilter = document.getElementById('filter-owner').value;
+  const btn = document.getElementById('btn-report');
+  if (ownerFilter) {
+    const name = STATE.profiles.find(p => p.id === ownerFilter)?.full_name || 'trainee';
+    btn.textContent = `📄 ${name.split(' ')[0]}'s report`;
+  } else {
+    btn.textContent = isPI() ? '📄 Report' : '📄 My report';
+  }
+}
+
 function openModal(id) { document.getElementById(id).style.display = 'flex'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
@@ -462,10 +473,20 @@ function wireEvents() {
     bd.addEventListener('click', e => { if (e.target === bd) closeModal(bd.id); });
   });
 
-  document.getElementById('filter-owner').addEventListener('change', renderProjectList);
+  document.getElementById('filter-owner').addEventListener('change', () => {
+    renderProjectList();
+    updateReportButton();
+  });
   document.getElementById('filter-stage').addEventListener('change', renderProjectList);
   document.getElementById('filter-archived').addEventListener('change', renderProjectList);
   document.getElementById('sort-by').addEventListener('change', renderProjectList);
+
+  document.getElementById('btn-report').addEventListener('click', () => {
+    const ownerFilter = document.getElementById('filter-owner').value;
+    const uid = ownerFilter || STATE.user.id;
+    window.open(`report.html?uid=${uid}`, '_blank');
+  });
+  updateReportButton();
 
   document.getElementById('pd-save').addEventListener('click', savePdDetails);
   document.getElementById('pd-advance').addEventListener('click', advanceStage);
