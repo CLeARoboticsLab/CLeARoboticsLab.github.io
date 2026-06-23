@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lab project tracker</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div>
+      <h1>Lab project tracker</h1>
+      <div class="sub" id="whoami"></div>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button id="btn-new-project" class="primary">+ New project</button>
+      <a href="report.html" target="_blank"><button type="button">Print report</button></a>
+      <button id="btn-logout">Log out</button>
+    </div>
+  </div>
+
+  <div class="stat-row" id="stat-row"></div>
+
+  <div class="controls">
+    <select id="filter-owner"><option value="">All trainees</option></select>
+    <select id="filter-stage"><option value="">All stages</option></select>
+    <select id="sort-by">
+      <option value="stage_time">Sort: time in stage</option>
+      <option value="age">Sort: project age</option>
+      <option value="deadline">Sort: deadline</option>
+      <option value="title">Sort: title</option>
+    </select>
+    <label style="display:flex; align-items:center; gap:5px; font-size:13px; color:var(--text-muted); margin:0;">
+      <input type="checkbox" id="filter-archived" style="width:auto;"> show archived
+    </label>
+    <div class="spacer"></div>
+    <button id="btn-report" class="subtle">📄 Report</button>
+  </div>
+
+  <div id="project-list"></div>
+  <div class="empty" id="empty-state" style="display:none;">No projects match these filters yet.</div>
+</div>
+
+<!-- New project modal -->
+<div class="modal-backdrop" id="modal-new" style="display:none;">
+  <div class="modal">
+    <div class="modal-head"><h2>New project</h2><button class="subtle" data-close="modal-new">✕</button></div>
+    <div id="new-msg"></div>
+    <form id="form-new-project">
+      <div class="field"><label>Project title</label><input type="text" id="np-title" required></div>
+      <div class="field" id="np-owner-field" style="display:none;">
+        <label>Owner</label>
+        <select id="np-owner"></select>
+      </div>
+      <div class="field">
+        <label>Stage template</label>
+        <select id="np-template"></select>
+      </div>
+      <div class="field">
+        <label>Stages and anticipated timeline (edit as needed)</label>
+        <div id="np-stage-editor"></div>
+        <button type="button" id="np-add-stage" class="subtle">+ add stage</button>
+      </div>
+      <div class="field"><label>Target venue</label><input type="text" id="np-venue" placeholder="e.g. NeurIPS 2026"></div>
+      <div class="field"><label>Target deadline</label><input type="date" id="np-deadline"></div>
+      <div class="field"><label>Collaborators</label><input type="text" id="np-collab" placeholder="e.g. Dr. Lee (internal), MIT (external)"></div>
+      <button type="submit" class="primary" style="width:100%;">Create project</button>
+    </form>
+  </div>
+</div>
+
+<!-- Project detail modal -->
+<div class="modal-backdrop" id="modal-detail" style="display:none;">
+  <div class="modal" style="max-width:620px;">
+    <div class="modal-head"><h2 id="pd-title"></h2><button class="subtle" data-close="modal-detail">✕</button></div>
+    <div id="pd-msg"></div>
+
+    <div class="field">
+      <label>Stage progress</label>
+      <div id="pd-dots" class="dots" style="margin-bottom:6px;"></div>
+      <div id="pd-stage-label" style="font-size:13px; color:var(--text-muted);"></div>
+    </div>
+
+    <div style="display:flex; gap:8px; margin-bottom:18px;">
+      <button id="pd-back">◂ Move back</button>
+      <button id="pd-advance" class="primary">Advance ▸</button>
+    </div>
+
+    <div class="field"><label>Target venue</label><input type="text" id="pd-venue"></div>
+    <div class="field"><label>Target deadline</label><input type="date" id="pd-deadline"></div>
+    <div class="field"><label>Collaborators</label><input type="text" id="pd-collab"></div>
+    <div class="field"><label>Notes / blockers</label><textarea id="pd-notes"></textarea></div>
+    <div class="field">
+      <label>Stage target dates — <span style="font-weight:400;">click ✕ to remove a stage</span></label>
+      <div id="pd-stage-dates"></div>
+    </div>
+    <button id="pd-save">Save details</button>
+
+    <div class="field" style="margin-top:22px;">
+      <label>Stage history</label>
+      <ul class="history-list" id="pd-history"></ul>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; margin-top:18px; border-top:1px solid var(--border); padding-top:14px;">
+      <button id="pd-archive"></button>
+      <button id="pd-delete" class="danger">Delete project</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
