@@ -199,30 +199,59 @@ function renderProjectList() {
 
 function renderProjectRow(project, d) {
   const owner = project.owner || {};
-  const stageLabel = d.current ? d.current.stage_name : '—';
-  const dots = d.stages.map((s, i) => {
-    const cls = i === d.currentIndex ? 'dot current' : (i < d.currentIndex ? 'dot filled' : 'dot');
-    return `<span class="${cls}"></span>`;
-  }).join('');
   const timingLabel = d.targetDate
     ? (d.staleLevel === 'red'
         ? `due ${fmtDate(d.targetDate.toISOString())}`
         : `by ${fmtDate(d.targetDate.toISOString())}`)
     : fmtWeeks(d.stageWeeks) + ' in stage';
+
+  // Show all stages if 5 or fewer; otherwise show prev + current + next with ellipses
+  const stages = d.stages;
+  const ci = d.currentIndex;
+  let pipelineHtml = '';
+  if (stages.length <= 5) {
+    pipelineHtml = stages.map((s, i) => stagePill(s.name, i, ci)).join(arrow());
+  } else {
+    const parts = [];
+    if (ci > 0) {
+      if (ci > 1) parts.push(`<span style="font-size:11px;color:var(--text-faint);align-self:center;">…</span>`);
+      parts.push(stagePill(stages[ci - 1].name, ci - 1, ci));
+    }
+    parts.push(stagePill(stages[ci].name, ci, ci));
+    if (ci < stages.length - 1) {
+      parts.push(stagePill(stages[ci + 1].name, ci + 1, ci));
+      if (ci < stages.length - 2) parts.push(`<span style="font-size:11px;color:var(--text-faint);align-self:center;">…</span>`);
+    }
+    pipelineHtml = parts.join(arrow());
+  }
+
   return `
     <div class="proj-row stale-${d.staleLevel}" data-open="${project.id}">
       <div class="avatar">${initials(owner.full_name)}</div>
       <div class="proj-main">
         <div class="proj-title">${escapeHtml(project.title)}</div>
         <div class="proj-meta">${escapeHtml(owner.full_name || '')}${owner.role ? ' · ' + owner.role : ''}${project.collaborators ? ' · w/ ' + escapeHtml(project.collaborators) : ''}</div>
+        <div class="stage-pipeline">${pipelineHtml}</div>
       </div>
-      <span class="badge">${escapeHtml(stageLabel)}</span>
-      <div class="dots">${dots}</div>
       <div class="timing">
         <div class="stage-time">${timingLabel}</div>
         <div class="age">${fmtAge(d.ageWeeks)}</div>
       </div>
     </div>`;
+}
+
+function stagePill(name, index, currentIndex) {
+  if (index < currentIndex) {
+    return `<span class="stage-pill done">${escapeHtml(name)}</span>`;
+  } else if (index === currentIndex) {
+    return `<span class="stage-pill current">${escapeHtml(name)}</span>`;
+  } else {
+    return `<span class="stage-pill future">${escapeHtml(name)}</span>`;
+  }
+}
+
+function arrow() {
+  return `<span style="font-size:10px;color:var(--text-faint);align-self:center;flex-shrink:0;">›</span>`;
 }
 
 function escapeHtml(s) {
@@ -330,14 +359,31 @@ function openProjectModal(id) {
   document.getElementById('pd-stage-label').textContent =
     `${d.current ? d.current.stage_name : '—'} · ${fmtWeeks(d.stageWeeks)} in stage · ${d.remaining} stage(s) remaining · ${fmtAge(d.ageWeeks)}`;
 
-  // Stage target dates editor
+  // Stage target dates editor — with delete for future stages
   const stageDatesDiv = document.getElementById('pd-stage-dates');
-  stageDatesDiv.innerHTML = d.stages.map(s => `
+  stageDatesDiv.innerHTML = d.stages.map((s, i) => {
+    const isPast = i < d.currentIndex;
+    const isCurrent = i === d.currentIndex;
+    const canDelete = editable && !isPast && !isCurrent;
+    return `
     <div class="stage-editor-row" style="margin-bottom:5px;">
-      <span style="flex:1; font-size:13px; color:var(--text);">${escapeHtml(s.name)}</span>
+      <span style="flex:1; font-size:13px; color:${isPast ? 'var(--text-faint)' : isCurrent ? 'var(--accent)' : 'var(--text)'}; ${isPast ? 'text-decoration:line-through;' : ''}">${escapeHtml(s.name)}</span>
       <input type="date" value="${s.target_date || ''}" data-stage-id="${s.id}"
         class="pd-stage-date" style="width:160px;" ${editable ? '' : 'disabled'}>
-    </div>`).join('');
+      ${canDelete ? `<button type="button" class="subtle pd-delete-stage" data-stage-id="${s.id}" data-stage-name="${escapeHtml(s.name)}" title="Remove this stage">✕</button>` : '<span style="width:32px;flex-shrink:0;"></span>'}
+    </div>`;
+  }).join('');
+
+  if (editable) {
+    stageDatesDiv.querySelectorAll('.pd-delete-stage').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const name = btn.dataset.stageName;
+        if (!confirm(`Remove the "${name}" stage from this project? This can't be undone.`)) return;
+        await supabaseClient.from('project_stages').delete().eq('id', btn.dataset.stageId);
+        await loadAll(); renderAll(); openProjectModal(STATE.openProjectId);
+      });
+    });
+  }
 
   document.getElementById('pd-venue').value = project.target_venue || '';
   document.getElementById('pd-deadline').value = project.target_deadline || '';

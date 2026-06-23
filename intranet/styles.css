@@ -140,7 +140,7 @@ label { font-size: 13px; color: var(--text-muted); display: block; margin: 0 0 4
   cursor: pointer;
 }
 .proj-row:hover { border-color: var(--text-faint); border-left-color: inherit; }
-.proj-row.stale-green { border-left-color: var(--good); }
+.proj-row.stale-green { border-left-color: var(--accent); }
 .proj-row.stale-amber { border-left-color: var(--warn); }
 .proj-row.stale-red { border-left-color: var(--bad); }
 
@@ -161,17 +161,61 @@ label { font-size: 13px; color: var(--text-muted); display: block; margin: 0 0 4
   white-space: nowrap; flex-shrink: 0;
 }
 
-.dots { display: flex; gap: 3px; flex-shrink: 0; }
-.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); }
-.dot.filled { background: var(--text-faint); }
-.dot.current { background: var(--accent); }
+.stage-pipeline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 5px;
+}
+.stage-pill {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.stage-pill.done {
+  background: none;
+  color: var(--text-faint);
+  text-decoration: line-through;
+  border-color: transparent;
+}
+.stage-pill.current {
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.stage-pill.future {
+  background: none;
+  color: var(--text-muted);
+  border-color: var(--border);
+}
 
 .timing { text-align: right; flex-shrink: 0; width: 100px; }
 .timing .stage-time { font-family: var(--font-mono); font-size: 13px; font-weight: 500; }
 .timing .age { font-size: 11px; color: var(--text-faint); margin-top: 1px; }
-.stale-green .stage-time { color: var(--good); }
+.stale-green .stage-time { color: var(--accent); }
 .stale-amber .stage-time { color: var(--warn); }
 .stale-red .stage-time { color: var(--bad); }
+
+.stage-pipeline {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin-top: 5px;
+}
+.stage-pill {
+  font-size: 11px; padding: 2px 7px; border-radius: 99px; white-space: nowrap;
+}
+.stage-pill.done {
+  background: none; color: var(--text-faint); text-decoration: line-through;
+}
+.stage-pill.current {
+  background: var(--accent-bg); color: var(--accent); font-weight: 600;
+}
+.stage-pill.future {
+  background: var(--bg); color: var(--text-muted);
+  border: 1px solid var(--border);
+}
 
 .empty {
   text-align: center; padding: 3rem 1rem; color: var(--text-muted);
