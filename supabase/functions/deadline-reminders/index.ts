@@ -1,18 +1,14 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { generateReminderEmailHtml } from "../_shared/email.ts";
+import { slackUserIdForEmail, slackDM, overdueReminderBlocks } from "../_shared/slack.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
-const FROM_EMAIL = Deno.env.get("FROM_EMAIL") ?? "Lab Tracker <tracker@lab.edu>";
 const CRON_SECRET = Deno.env.get("CRON_SECRET")!;
 
 Deno.serve(async (req) => {
-  //  const auth = req.headers.get("Authorization");
-  // if (auth !== `Bearer ${CRON_SECRET}`) {
   const auth = req.headers.get("x-cron-secret");
   if (auth !== CRON_SECRET) {
-     return new Response("Unauthorized", { status: 401 });
+    return new Response("Unauthorized", { status: 401 });
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -20,7 +16,7 @@ Deno.serve(async (req) => {
   });
 
   const [
-    { data: { users } },
+    usersResult,
     { data: profiles },
     { data: projects },
   ] = await Promise.all([
@@ -32,15 +28,14 @@ Deno.serve(async (req) => {
       .eq("status", "active"),
   ]);
 
-  const piProfile = profiles?.find((p) => p.role === "pi");
-  const piUser = users?.find((u) => u.id === piProfile?.id);
-  const piEmail = piUser?.email ?? null;
+  const users = usersResult.data?.users;
+  const piProfile = profiles?.find((p: any) => p.role === "pi");
+  const piUser = users?.find((u: any) => u.id === piProfile?.id);
 
   const now = new Date();
   const results: string[] = [];
 
   for (const project of projects ?? []) {
-    // Reconstruct current stage
     const stages = (project.project_stages ?? []).sort(
       (a: any, b: any) => a.sort_order - b.sort_order,
     );
@@ -59,7 +54,7 @@ Deno.serve(async (req) => {
     if (!currentStage?.target_date) continue;
 
     const targetDate = new Date(currentStage.target_date);
-    if (targetDate >= now) continue; // not overdue — nothing to do
+    if (targetDate >= now) continue;
 
     const daysOverdue = Math.floor(
       (now.getTime() - targetDate.getTime()) / 86400000,
@@ -69,7 +64,7 @@ Deno.serve(async (req) => {
     const ownerUser = users?.find((u: any) => u.id === project.owner_id);
     if (!ownerUser?.email || !ownerProfile) continue;
 
-    // ── Trainee reminder: send every 2 days ──────────────────
+    // ── Trainee reminder: every 2 days ───────────────────────
     const { data: lastTraineeRow } = await supabase
       .from("reminder_log")
       .select("sent_at")
@@ -84,42 +79,28 @@ Deno.serve(async (req) => {
       : Infinity;
 
     if (daysSinceTrainee >= 2) {
-      const html = generateReminderEmailHtml({
-        recipientName: ownerProfile.full_name,
-        traineeName: ownerProfile.full_name,
-        projectTitle: project.title,
-        stageName: currentStage.name,
-        dueDate: currentStage.target_date,
-        daysOverdue,
-        isPI: false,
-      });
-
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${RESEND_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: FROM_EMAIL,
-          to: [ownerUser.email],
-          subject: `Reminder: "${project.title}" — stage overdue by ${daysOverdue} day${daysOverdue === 1 ? "" : "s"}`,
-          html,
-        }),
-      });
-
-      if (res.ok) {
-        await supabase
-          .from("reminder_log")
-          .insert({ project_id: project.id, reminder_type: "overdue_trainee" });
-        results.push(
-          `Trainee reminder → ${ownerProfile.full_name}: ${project.title}`,
-        );
+      const slackId = await slackUserIdForEmail(ownerUser.email);
+      if (slackId) {
+        const blocks = overdueReminderBlocks({
+          traineeName: ownerProfile.full_name,
+          projectTitle: project.title,
+          stageName: currentStage.name,
+          dueDate: currentStage.target_date,
+          daysOverdue,
+          isPI: false,
+        });
+        const ok = await slackDM(slackId, blocks,
+          `Reminder: "${project.title}" stage is ${daysOverdue} day${daysOverdue === 1 ? "" : "s"} overdue`);
+        if (ok) {
+          await supabase.from("reminder_log")
+            .insert({ project_id: project.id, reminder_type: "overdue_trainee" });
+          results.push(`Trainee reminder → ${ownerProfile.full_name}: ${project.title}`);
+        }
       }
     }
 
     // ── PI notice: once a week after 7+ days overdue ─────────
-    if (daysOverdue >= 7 && piEmail && piEmail !== ownerUser.email) {
+    if (daysOverdue >= 7 && piUser?.email) {
       const { data: lastPIRow } = await supabase
         .from("reminder_log")
         .select("sent_at")
@@ -134,37 +115,23 @@ Deno.serve(async (req) => {
         : Infinity;
 
       if (daysSincePI >= 7) {
-        const html = generateReminderEmailHtml({
-          recipientName: piProfile?.full_name ?? "PI",
-          traineeName: ownerProfile.full_name,
-          projectTitle: project.title,
-          stageName: currentStage.name,
-          dueDate: currentStage.target_date,
-          daysOverdue,
-          isPI: true,
-        });
-
-        const res = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${RESEND_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            from: FROM_EMAIL,
-            to: [piEmail],
-            subject: `FYI: "${project.title}" (${ownerProfile.full_name}) — ${daysOverdue} days overdue`,
-            html,
-          }),
-        });
-
-        if (res.ok) {
-          await supabase
-            .from("reminder_log")
-            .insert({ project_id: project.id, reminder_type: "overdue_pi" });
-          results.push(
-            `PI notice → ${ownerProfile.full_name}: ${project.title} (${daysOverdue}d overdue)`,
-          );
+        const piSlackId = await slackUserIdForEmail(piUser.email);
+        if (piSlackId) {
+          const blocks = overdueReminderBlocks({
+            traineeName: ownerProfile.full_name,
+            projectTitle: project.title,
+            stageName: currentStage.name,
+            dueDate: currentStage.target_date,
+            daysOverdue,
+            isPI: true,
+          });
+          const ok = await slackDM(piSlackId, blocks,
+            `FYI: "${project.title}" (${ownerProfile.full_name}) is ${daysOverdue} days overdue`);
+          if (ok) {
+            await supabase.from("reminder_log")
+              .insert({ project_id: project.id, reminder_type: "overdue_pi" });
+            results.push(`PI notice → ${ownerProfile.full_name}: ${project.title} (${daysOverdue}d overdue)`);
+          }
         }
       }
     }

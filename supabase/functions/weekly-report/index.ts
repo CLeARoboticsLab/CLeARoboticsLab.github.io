@@ -1,16 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { generateWeeklyEmailHtml } from "../_shared/email.ts";
+import { slackUserIdForEmail, slackDM, weeklyReportBlocks } from "../_shared/slack.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
-const FROM_EMAIL = Deno.env.get("FROM_EMAIL") ?? "Lab Tracker <tracker@lab.edu>";
 const CRON_SECRET = Deno.env.get("CRON_SECRET")!;
 
 Deno.serve(async (req) => {
-  // Only allow requests from our scheduled GitHub Action
-  //  const auth = req.headers.get("Authorization");
-  //  if (auth !== `Bearer ${CRON_SECRET}`) {
   const auth = req.headers.get("x-cron-secret");
   if (auth !== CRON_SECRET) {
     return new Response("Unauthorized", { status: 401 });
@@ -20,11 +15,10 @@ Deno.serve(async (req) => {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  // Fetch all auth users (for email addresses), profiles, and projects
   const [
-    { data: { users } },
-    { data: profiles },
-    { data: projects },
+    usersResult,
+    { data: profiles, error: profilesError },
+    { data: projects, error: projectsError },
   ] = await Promise.all([
     supabase.auth.admin.listUsers(),
     supabase.from("profiles").select("*"),
@@ -34,18 +28,24 @@ Deno.serve(async (req) => {
       .eq("status", "active"),
   ]);
 
-  const piProfile = profiles?.find((p) => p.role === "pi");
-  const piUser = users?.find((u) => u.id === piProfile?.id);
-  const piEmail = piUser?.email ?? null;
+  const users = usersResult.data?.users;
+  if (usersResult.error) console.log("listUsers error:", usersResult.error);
+  if (profilesError) console.log("profiles error:", profilesError);
+  if (projectsError) console.log("projects error:", projectsError);
 
   const trainees = (profiles ?? []).filter((p) => p.role !== "pi");
+  const piProfile = (profiles ?? []).find((p) => p.role === "pi");
+  const piUser = users?.find((u) => u.id === piProfile?.id);
+  const piSlackId = piUser?.email ? await slackUserIdForEmail(piUser.email) : null;
   const results: string[] = [];
 
   for (const trainee of trainees) {
     const traineeUser = users?.find((u) => u.id === trainee.id);
-    if (!traineeUser?.email) continue;
+    if (!traineeUser?.email) {
+      console.log(`${trainee.full_name}: no auth email, skipping`);
+      continue;
+    }
 
-    // Collect and sort this trainee's active projects
     const traineeProjects = (projects ?? [])
       .filter((p) => p.owner_id === trainee.id)
       .map((p) => ({
@@ -59,31 +59,25 @@ Deno.serve(async (req) => {
         ),
       }));
 
-    if (traineeProjects.length === 0) continue;
+    if (traineeProjects.length === 0) {
+      console.log(`${trainee.full_name}: no active projects, skipping`);
+      continue;
+    }
 
-    const html = generateWeeklyEmailHtml(
-      trainee.full_name,
-      trainee.role,
-      traineeProjects,
-    );
+    const slackId = await slackUserIdForEmail(traineeUser.email);
+    if (!slackId) {
+      results.push(`✗ ${trainee.full_name}: not found in Slack workspace`);
+      continue;
+    }
 
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: FROM_EMAIL,
-        to: [traineeUser.email],
-        cc: piEmail && piEmail !== traineeUser.email ? [piEmail] : [],
-        subject: `Automated tracking update: ${trainee.full_name}`,
-        html,
-      }),
-    });
+    const blocks = weeklyReportBlocks(trainee.full_name, traineeProjects);
+    const ok = await slackDM(slackId, blocks, `Weekly project status for ${trainee.full_name}`);
+    results.push(ok ? `✓ ${trainee.full_name}` : `✗ ${trainee.full_name}: Slack DM failed`);
 
-    const label = `${trainee.full_name} → ${traineeUser.email}`;
-    results.push(res.ok ? `✓ ${label}` : `✗ ${label} (HTTP ${res.status})`);
+    // Also DM the PI a copy
+    if (piSlackId && piUser?.id !== trainee.id) {
+      await slackDM(piSlackId, blocks, `Weekly project status for ${trainee.full_name}`);
+    }
   }
 
   console.log("Weekly report results:", results);
