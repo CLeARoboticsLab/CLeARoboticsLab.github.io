@@ -3,11 +3,12 @@
 // ============================================================
 const STATE = {
   user: null,
-  profile: null,        // current user's profiles row
-  profiles: [],          // all profiles, for owner names + filter dropdown
-  templates: [],          // stage_templates with .items
-  projects: [],            // projects with .project_stages and .stage_history
-  newStageEditor: [],       // working list while creating a project: [{name, target_date}]
+  profile: null,
+  profiles: [],
+  templates: [],
+  projects: [],
+  collaboratorProjectIds: new Set(), // project IDs where current user is a collaborator (not owner)
+  newStageEditor: [],
   openProjectId: null,
 };
 
@@ -27,26 +28,27 @@ const WEEK_MS = 7 * 24 * 3600 * 1000;
 })();
 
 async function loadAll() {
-  // Non-PI users only fetch their own projects — PI fetches everything
-  let projectQuery = supabaseClient.from('projects').select(`
-      *,
-      owner:profiles(id, full_name, role),
-      project_stages(*),
-      stage_history(*)
-    `).order('created_at', { ascending: false });
-
-  // We need the profile before we can scope the query, so fetch it first
+  // Fetch profiles first — needed to determine role before scoping other queries
   const { data: profiles } = await supabaseClient.from('profiles').select('*').order('full_name');
   STATE.profiles = profiles || [];
   STATE.profile = STATE.profiles.find(p => p.id === STATE.user.id) || null;
 
-  if (!isPI()) projectQuery = projectQuery.eq('owner_id', STATE.user.id);
-
-  const [{ data: templates }, { data: templateItems }, { data: projects }] = await Promise.all([
+  const [{ data: templates }, { data: templateItems }, { data: projects }, { data: myCollabs }, { data: allCollabs }] = await Promise.all([
     supabaseClient.from('stage_templates').select('*').order('name'),
     supabaseClient.from('stage_template_items').select('*').order('sort_order'),
-    projectQuery,
+    supabaseClient.from('projects').select(`
+      *,
+      owner:owner_id(id, full_name, role),
+      project_stages(*),
+      stage_history(*)
+    `).order('created_at', { ascending: false }),
+    // Project IDs where current user is a collaborator
+    supabaseClient.from('project_collaborators').select('project_id').eq('profile_id', STATE.user.id),
+    // All collaborator memberships (to attach to projects)
+    supabaseClient.from('project_collaborators').select('project_id, profile_id'),
   ]);
+
+  STATE.collaboratorProjectIds = new Set((myCollabs || []).map(r => r.project_id));
 
   STATE.templates = (templates || []).map(t => ({
     ...t,
@@ -56,11 +58,16 @@ async function loadAll() {
     ...p,
     project_stages: (p.project_stages || []).sort((a, b) => a.sort_order - b.sort_order),
     stage_history: (p.stage_history || []).sort((a, b) => new Date(a.entered_at) - new Date(b.entered_at)),
+    internal_collaborator_ids: (allCollabs || []).filter(c => c.project_id === p.id).map(c => c.profile_id),
   }));
 }
 
 function isPI() { return STATE.profile && STATE.profile.role === 'pi'; }
-function canEdit(project) { return isPI() || project.owner_id === STATE.user.id; }
+function isCollaborator(project) { return STATE.collaboratorProjectIds.has(project.id); }
+// canEdit: can advance stages and edit notes/dates — owner, PI, or collaborator
+function canEdit(project) { return isPI() || project.owner_id === STATE.user.id || isCollaborator(project); }
+// canManage: can rename/delete stages, add collaborators, archive, delete — owner or PI only
+function canManage(project) { return isPI() || project.owner_id === STATE.user.id; }
 
 // ============================================================
 // Derived per-project values
@@ -141,6 +148,20 @@ function renderFilterOptions() {
     STATE.templates.forEach(t => t.items.forEach(i => names.add(i.name)));
     [...names].forEach(n => { const o = document.createElement('option'); o.value = n; o.textContent = n; stageSel.appendChild(o); });
   }
+  const npCollabs = document.getElementById('np-internal-collabs');
+  if (npCollabs.children.length === 0) {
+    const others = STATE.profiles.filter(p => p.role !== 'pi' && p.id !== STATE.user.id);
+    if (others.length === 0) {
+      npCollabs.innerHTML = '<span style="font-size:13px;color:var(--text-faint);">No other lab members yet.</span>';
+    } else {
+      others.forEach(p => {
+        const label = document.createElement('label');
+        label.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;';
+        label.innerHTML = `<input type="checkbox" value="${p.id}" class="np-collab-check" style="width:auto;"> ${escapeHtml(p.full_name)}`;
+        npCollabs.appendChild(label);
+      });
+    }
+  }
   const npTemplate = document.getElementById('np-template');
   if (npTemplate.options.length === 0) {
     STATE.templates.forEach(t => { const o = document.createElement('option'); o.value = t.id; o.textContent = t.name; npTemplate.appendChild(o); });
@@ -172,7 +193,12 @@ function renderProjectList() {
   const showArchived = document.getElementById('filter-archived').checked;
   const sortBy = document.getElementById('sort-by').value;
 
-  let rows = STATE.projects.filter(p => showArchived ? true : p.status === 'active');
+  let rows = STATE.projects.filter(p => {
+    if (!showArchived && p.status !== 'active') return false;
+    // Non-PI users only see projects they own or collaborate on
+    if (!isPI() && p.owner_id !== STATE.user.id && !STATE.collaboratorProjectIds.has(p.id)) return false;
+    return true;
+  });
   if (ownerFilter) rows = rows.filter(p => p.owner_id === ownerFilter);
   if (stageFilter) rows = rows.filter(p => { const d = computeDerived(p); return d.current && d.current.stage_name === stageFilter; });
 
@@ -205,7 +231,13 @@ function renderProjectRow(project, d) {
         : `by ${fmtDate(d.targetDate.toISOString())}`)
     : fmtWeeks(d.stageWeeks) + ' in stage';
 
-  // Show all stages if 5 or fewer; otherwise show prev + current + next with ellipses
+  // Internal collaborator names
+  const collabNames = (project.internal_collaborator_ids || [])
+    .map(id => STATE.profiles.find(p => p.id === id)?.full_name)
+    .filter(Boolean);
+  const collabStr = collabNames.length ? ' · w/ ' + collabNames.join(', ') : (project.collaborators ? ' · w/ ' + project.collaborators : '');
+
+  // Stage pipeline
   const stages = d.stages;
   const ci = d.currentIndex;
   let pipelineHtml = '';
@@ -230,7 +262,7 @@ function renderProjectRow(project, d) {
       <div class="avatar">${initials(owner.full_name)}</div>
       <div class="proj-main">
         <div class="proj-title">${escapeHtml(project.title)}</div>
-        <div class="proj-meta">${escapeHtml(owner.full_name || '')}${owner.role ? ' · ' + owner.role : ''}${project.collaborators ? ' · w/ ' + escapeHtml(project.collaborators) : ''}</div>
+        <div class="proj-meta">${escapeHtml(owner.full_name || '')}${owner.role ? ' · ' + owner.role : ''}${escapeHtml(collabStr)}</div>
         <div class="stage-pipeline">${pipelineHtml}</div>
       </div>
       <div class="timing">
@@ -320,6 +352,7 @@ async function submitNewProject(e) {
   const target_venue = document.getElementById('np-venue').value || null;
   const target_deadline = document.getElementById('np-deadline').value || null;
   const collaborators = document.getElementById('np-collab').value || null;
+  const internalCollabIds = [...document.querySelectorAll('.np-collab-check:checked')].map(cb => cb.value);
 
   const { data: proj, error: e1 } = await supabaseClient.from('projects')
     .insert([{ title, owner_id, template_id, target_venue, target_deadline, collaborators }])
@@ -336,7 +369,15 @@ async function submitNewProject(e) {
     .insert([{ project_id: proj.id, stage_name: STATE.newStageEditor[0].name }]);
   if (e3) { msg.innerHTML = `<div class="msg error">${e3.message}</div>`; return; }
 
+  if (internalCollabIds.length > 0) {
+    const { error: e4 } = await supabaseClient.from('project_collaborators')
+      .insert(internalCollabIds.map(profile_id => ({ project_id: proj.id, profile_id })));
+    if (e4) { msg.innerHTML = `<div class="msg error">${e4.message}</div>`; return; }
+  }
+
   closeModal('modal-new');
+  // Reset checkboxes (form.reset() doesn't reach dynamically-created checkboxes)
+  document.querySelectorAll('.np-collab-check').forEach(cb => cb.checked = false);
   document.getElementById('form-new-project').reset();
   await loadAll();
   renderAll();
@@ -359,22 +400,28 @@ function openProjectModal(id) {
   document.getElementById('pd-stage-label').textContent =
     `${d.current ? d.current.stage_name : '—'} · ${fmtWeeks(d.stageWeeks)} in stage · ${d.remaining} stage(s) remaining · ${fmtAge(d.ageWeeks)}`;
 
-  // Stage target dates editor — with delete for future stages
+  // Stage target dates + rename + add editor
   const stageDatesDiv = document.getElementById('pd-stage-dates');
   stageDatesDiv.innerHTML = d.stages.map((s, i) => {
     const isPast = i < d.currentIndex;
     const isCurrent = i === d.currentIndex;
-    const canDelete = editable && !isPast && !isCurrent;
+    const canDelete = canManage(project) && !isPast && !isCurrent;
+    const nameEditable = canEdit(project) && !isPast;
+    const nameEl = nameEditable
+      ? `<input type="text" value="${escapeHtml(s.name)}" data-stage-id="${s.id}" class="pd-stage-name" style="flex:1; font-size:13px; ${isCurrent ? 'color:var(--accent); font-weight:500;' : ''}">`
+      : `<span style="flex:1; font-size:13px; color:var(--text-faint); text-decoration:line-through;">${escapeHtml(s.name)}</span>`;
     return `
     <div class="stage-editor-row" style="margin-bottom:5px;">
-      <span style="flex:1; font-size:13px; color:${isPast ? 'var(--text-faint)' : isCurrent ? 'var(--accent)' : 'var(--text)'}; ${isPast ? 'text-decoration:line-through;' : ''}">${escapeHtml(s.name)}</span>
+      ${nameEl}
       <input type="date" value="${s.target_date || ''}" data-stage-id="${s.id}"
-        class="pd-stage-date" style="width:160px;" ${editable ? '' : 'disabled'}>
+        class="pd-stage-date" style="width:160px;" ${canEdit(project) ? '' : 'disabled'}>
       ${canDelete ? `<button type="button" class="subtle pd-delete-stage" data-stage-id="${s.id}" data-stage-name="${escapeHtml(s.name)}" title="Remove this stage">✕</button>` : '<span style="width:32px;flex-shrink:0;"></span>'}
     </div>`;
   }).join('');
 
-  if (editable) {
+  document.getElementById('pd-add-stage').style.display = canEdit(project) ? 'inline-block' : 'none';
+
+  if (canEdit(project)) {
     stageDatesDiv.querySelectorAll('.pd-delete-stage').forEach(btn => {
       btn.addEventListener('click', async () => {
         const name = btn.dataset.stageName;
@@ -385,21 +432,36 @@ function openProjectModal(id) {
     });
   }
 
+  // Internal collaborators checkboxes
+  const pdCollabs = document.getElementById('pd-internal-collabs');
+  const others = STATE.profiles.filter(p => p.role !== 'pi' && p.id !== project.owner_id);
+  if (others.length === 0) {
+    pdCollabs.innerHTML = '<span style="font-size:13px;color:var(--text-faint);">No other lab members yet.</span>';
+  } else {
+    pdCollabs.innerHTML = others.map(p => {
+      const checked = (project.internal_collaborator_ids || []).includes(p.id) ? 'checked' : '';
+      const disabled = canManage(project) ? '' : 'disabled';
+      return `<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" value="${p.id}" class="pd-collab-check" ${checked} ${disabled} style="width:auto;"> ${escapeHtml(p.full_name)}
+      </label>`;
+    }).join('');
+  }
+
   document.getElementById('pd-venue').value = project.target_venue || '';
   document.getElementById('pd-deadline').value = project.target_deadline || '';
   document.getElementById('pd-collab').value = project.collaborators || '';
   document.getElementById('pd-notes').value = project.notes || '';
-  ['pd-venue', 'pd-deadline', 'pd-collab', 'pd-notes'].forEach(fid => document.getElementById(fid).disabled = !editable);
-  document.getElementById('pd-save').style.display = editable ? 'inline-block' : 'none';
+  ['pd-venue', 'pd-deadline', 'pd-collab', 'pd-notes'].forEach(fid => document.getElementById(fid).disabled = !canEdit(project));
+  document.getElementById('pd-save').style.display = canEdit(project) ? 'inline-block' : 'none';
 
-  document.getElementById('pd-back').style.display = (editable && d.currentIndex > 0) ? 'inline-block' : 'none';
-  document.getElementById('pd-advance').style.display = editable ? 'inline-block' : 'none';
+  document.getElementById('pd-back').style.display = (canEdit(project) && d.currentIndex > 0) ? 'inline-block' : 'none';
+  document.getElementById('pd-advance').style.display = canEdit(project) ? 'inline-block' : 'none';
   document.getElementById('pd-advance').textContent = (d.currentIndex === d.stages.length - 1) ? 'Mark complete & archive' : 'Advance ▸';
 
   const archiveBtn = document.getElementById('pd-archive');
-  archiveBtn.style.display = editable ? 'inline-block' : 'none';
+  archiveBtn.style.display = canManage(project) ? 'inline-block' : 'none';
   archiveBtn.textContent = project.status === 'archived' ? 'Re-activate' : 'Archive';
-  document.getElementById('pd-delete').style.display = editable ? 'inline-block' : 'none';
+  document.getElementById('pd-delete').style.display = canManage(project) ? 'inline-block' : 'none';
 
   document.getElementById('pd-history').innerHTML = d.history
     .slice().reverse()
@@ -416,6 +478,9 @@ function fmtDate(iso) {
 
 async function savePdDetails() {
   const project = STATE.projects.find(p => p.id === STATE.openProjectId);
+  const msg = document.getElementById('pd-msg');
+
+  // Save project fields
   const updates = {
     target_venue: document.getElementById('pd-venue').value || null,
     target_deadline: document.getElementById('pd-deadline').value || null,
@@ -423,17 +488,56 @@ async function savePdDetails() {
     notes: document.getElementById('pd-notes').value || null,
   };
   const { error } = await supabaseClient.from('projects').update(updates).eq('id', project.id);
+  if (error) { msg.innerHTML = `<div class="msg error">${error.message}</div>`; return; }
 
-  // Save each stage's target date
-  const dateInputs = document.querySelectorAll('.pd-stage-date');
+  // Save renames + dates for existing stages
+  const nameInputs = document.querySelectorAll('.pd-stage-name[data-stage-id]');
+  const dateInputs = document.querySelectorAll('.pd-stage-date[data-stage-id]');
+  for (const input of nameInputs) {
+    const stageId = input.dataset.stageId;
+    const dateInput = document.querySelector(`.pd-stage-date[data-stage-id="${stageId}"]`);
+    await supabaseClient.from('project_stages').update({
+      name: input.value.trim() || input.value,
+      target_date: dateInput ? (dateInput.value || null) : null,
+    }).eq('id', stageId);
+  }
+  // Also save dates for past stages (which have no name input)
   for (const input of dateInputs) {
-    await supabaseClient.from('project_stages')
-      .update({ target_date: input.value || null })
-      .eq('id', input.dataset.stageId);
+    if (!document.querySelector(`.pd-stage-name[data-stage-id="${input.dataset.stageId}"]`)) {
+      await supabaseClient.from('project_stages')
+        .update({ target_date: input.value || null })
+        .eq('id', input.dataset.stageId);
+    }
   }
 
-  const msg = document.getElementById('pd-msg');
-  msg.innerHTML = error ? `<div class="msg error">${error.message}</div>` : `<div class="msg ok">Saved.</div>`;
+  // Save new stages (those without a data-stage-id)
+  const newStageRows = document.querySelectorAll('.pd-stage-name:not([data-stage-id])');
+  if (newStageRows.length > 0) {
+    const maxOrder = Math.max(...project.project_stages.map(s => s.sort_order), 0);
+    const toInsert = [...newStageRows].map((nameEl, i) => {
+      const dateEl = nameEl.closest('.stage-editor-row').querySelector('.pd-stage-date');
+      return {
+        project_id: project.id,
+        name: nameEl.value.trim() || 'New stage',
+        sort_order: maxOrder + i + 1,
+        target_date: dateEl?.value || null,
+      };
+    });
+    await supabaseClient.from('project_stages').insert(toInsert);
+  }
+
+  // Save internal collaborator changes (owner/PI only)
+  if (canManage(project)) {
+    const checkedIds = [...document.querySelectorAll('.pd-collab-check:checked')].map(cb => cb.value);
+    // Delete all existing and re-insert — simplest way to handle add/remove
+    await supabaseClient.from('project_collaborators').delete().eq('project_id', project.id);
+    if (checkedIds.length > 0) {
+      await supabaseClient.from('project_collaborators')
+        .insert(checkedIds.map(profile_id => ({ project_id: project.id, profile_id })));
+    }
+  }
+
+  msg.innerHTML = `<div class="msg ok">Saved.</div>`;
   await loadAll(); renderAll();
 }
 
@@ -548,6 +652,17 @@ function wireEvents() {
   updateReportButton();
 
   document.getElementById('pd-save').addEventListener('click', savePdDetails);
+  document.getElementById('pd-add-stage').addEventListener('click', () => {
+    const stageDatesDiv = document.getElementById('pd-stage-dates');
+    const row = document.createElement('div');
+    row.className = 'stage-editor-row';
+    row.style.marginBottom = '5px';
+    row.innerHTML = `
+      <input type="text" placeholder="Stage name" class="pd-stage-name" style="flex:1; font-size:13px;">
+      <input type="date" class="pd-stage-date" style="width:160px;">
+      <button type="button" class="subtle" title="Remove" onclick="this.closest('.stage-editor-row').remove()">✕</button>`;
+    stageDatesDiv.appendChild(row);
+  });
   document.getElementById('pd-advance').addEventListener('click', advanceStage);
   document.getElementById('pd-back').addEventListener('click', moveBack);
   document.getElementById('pd-archive').addEventListener('click', toggleArchive);

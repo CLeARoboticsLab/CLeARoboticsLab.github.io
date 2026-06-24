@@ -64,7 +64,11 @@
       </div>
       <div class="field"><label>Target venue</label><input type="text" id="np-venue" placeholder="e.g. NeurIPS 2026"></div>
       <div class="field"><label>Target deadline</label><input type="date" id="np-deadline"></div>
-      <div class="field"><label>Collaborators</label><input type="text" id="np-collab" placeholder="e.g. Dr. Lee (internal), MIT (external)"></div>
+      <div class="field">
+        <label>Internal collaborators (lab members)</label>
+        <div id="np-internal-collabs" style="display:flex; flex-direction:column; gap:4px; margin-top:4px;"></div>
+      </div>
+      <div class="field"><label>External collaborators</label><input type="text" id="np-collab" placeholder="e.g. Dr. Lee (MIT), Prof. Smith (Stanford)"></div>
       <button type="submit" class="primary" style="width:100%;">Create project</button>
     </form>
   </div>
@@ -89,11 +93,16 @@
 
     <div class="field"><label>Target venue</label><input type="text" id="pd-venue"></div>
     <div class="field"><label>Target deadline</label><input type="date" id="pd-deadline"></div>
-    <div class="field"><label>Collaborators</label><input type="text" id="pd-collab"></div>
+    <div class="field">
+      <label>Internal collaborators</label>
+      <div id="pd-internal-collabs" style="display:flex; flex-direction:column; gap:4px; margin-top:4px;"></div>
+    </div>
+    <div class="field"><label>External collaborators</label><input type="text" id="pd-collab"></div>
     <div class="field"><label>Notes / blockers</label><textarea id="pd-notes"></textarea></div>
     <div class="field">
-      <label>Stage target dates — <span style="font-weight:400;">click ✕ to remove a stage</span></label>
+      <label>Stages — <span style="font-weight:400;">rename or set dates for current/future; click ✕ to remove a future stage</span></label>
       <div id="pd-stage-dates"></div>
+      <button type="button" id="pd-add-stage" class="subtle" style="margin-top:6px;">+ add stage</button>
     </div>
     <button id="pd-save">Save details</button>
 
