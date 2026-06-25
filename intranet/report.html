@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lab project tracker · report</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .proj-card {
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+    background: var(--surface);
+  }
+  .proj-card-title { font-family: var(--font-serif); font-size: 16px; font-weight: 600; margin: 0 0 2px; }
+  .proj-card-meta { font-size: 12px; color: var(--text-muted); margin: 0; }
+  .stage-list { margin: 10px 0 0; border-top: 1px solid var(--border); padding-top: 8px; }
+  .stage-item {
+    display: flex; align-items: baseline; gap: 8px;
+    padding: 5px 0; font-size: 13px;
+    border-bottom: 1px solid var(--border);
+  }
+  .stage-item:last-child { border-bottom: none; }
+  .stage-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+  .stage-done .stage-dot { background: var(--text-faint); }
+  .stage-done .stage-item-name { color: var(--text-faint); text-decoration: line-through; }
+  .stage-current .stage-dot { background: var(--accent); }
+  .stage-current .stage-item-name { font-weight: 600; color: var(--accent); }
+  .stage-future .stage-dot { background: var(--border); }
+  .stage-date { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+  .stage-overdue .stage-date { color: var(--bad); }
+  .proj-notes { font-size: 12px; color: var(--text-muted); margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--border); }
+  .report-hd { margin-bottom: 2rem; }
+  .report-hd h1 { font-size: 22px; margin-bottom: 4px; }
+  .report-hd .sub { color: var(--text-muted); font-size: 13px; }
+
+  @media print {
+    .no-print { display: none !important; }
+    .wrap { padding: 1rem; }
+    .proj-card { break-inside: avoid; }
+    @page { margin: 1.5cm; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar no-print" style="margin-bottom:1.5rem;">
+    <div style="font-family:var(--font-serif); font-size:18px; font-weight:600;">Lab project report</div>
+    <div style="display:flex; gap:8px;">
+      <button onclick="window.print()" class="primary">🖨 Print / save PDF</button>
+      <button onclick="window.location.href='dashboard.html'">← Dashboard</button>
+    </div>
+  </div>
+
+  <div id="report-content"><div class="empty">Loading…</div></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script>
+const WEEK_MS = 7 * 24 * 3600 * 1000;
+
+(async function init() {
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (!session) { window.location.href = 'auth.html'; return; }
+
+  const params = new URLSearchParams(window.location.search);
+  const uid = params.get('uid') || session.user.id;
+
+  // Check whether the current user is allowed to view this report
+  const { data: myProfile } = await supabaseClient
+    .from('profiles').select('*').eq('id', session.user.id).single();
+  const isPI = myProfile?.role === 'pi';
+
+  if (uid !== session.user.id && !isPI) {
+    document.getElementById('report-content').innerHTML =
+      '<div class="empty">You can only view your own report.</div>';
+    return;
+  }
+
+  const [{ data: profile }, { data: projects }] = await Promise.all([
+    supabaseClient.from('profiles').select('*').eq('id', uid).single(),
+    supabaseClient.from('projects')
+      .select('*, project_stages(*), stage_history(*)')
+      .eq('owner_id', uid)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false }),
+  ]);
+
+  if (!profile) {
+    document.getElementById('report-content').innerHTML =
+      '<div class="empty">Could not load profile.</div>';
+    return;
+  }
+
+  const processed = (projects || []).map(p => ({
+    ...p,
+    project_stages: (p.project_stages || []).sort((a, b) => a.sort_order - b.sort_order),
+    stage_history: (p.stage_history || []).sort((a, b) => new Date(a.entered_at) - new Date(b.entered_at)),
+  }));
+
+  render(profile, processed);
+})();
+
+function fmtDate(iso) {
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function render(profile, projects) {
+  const today = new Date().toLocaleDateString(undefined, {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+  });
+  const now = new Date();
+
+  const cards = projects.map(p => {
+    const stages = p.project_stages;
+    const currentEntry = p.stage_history.find(h => !h.exited_at) || p.stage_history[p.stage_history.length - 1];
+    const currentIndex = currentEntry ? stages.findIndex(s => s.name === currentEntry.stage_name) : -1;
+    const ageWeeks = Math.round((now - new Date(p.created_at)) / WEEK_MS);
+
+    const stageItems = stages.map((s, i) => {
+      const targetDate = s.target_date ? new Date(s.target_date) : null;
+      const isOverdue = targetDate && i === currentIndex && targetDate < now;
+      let cls = 'stage-item ';
+      if (i < currentIndex) cls += 'stage-done';
+      else if (i === currentIndex) cls += isOverdue ? 'stage-current stage-overdue' : 'stage-current';
+      else cls += 'stage-future';
+
+      let dateStr = '';
+      if (targetDate) {
+        if (i < currentIndex) dateStr = '✓ ' + fmtDate(s.target_date);
+        else if (isOverdue) dateStr = '⚠ due ' + fmtDate(s.target_date);
+        else dateStr = 'by ' + fmtDate(s.target_date);
+      }
+
+      return `<div class="${cls}">
+        <span class="stage-dot"></span>
+        <span class="stage-item-name">${esc(s.name)}</span>
+        <span class="stage-date">${esc(dateStr)}</span>
+      </div>`;
+    }).join('');
+
+    const venue = p.target_venue ? ` · ${esc(p.target_venue)}` : '';
+    const collab = p.collaborators ? `<div class="proj-card-meta" style="margin-top:2px;">w/ ${esc(p.collaborators)}</div>` : '';
+    const notes = p.notes ? `<div class="proj-notes">📝 ${esc(p.notes)}</div>` : '';
+
+    return `<div class="proj-card">
+      <div class="proj-card-title">${esc(p.title)}</div>
+      <div class="proj-card-meta">${ageWeeks} wk active${venue}</div>
+      ${collab}
+      <div class="stage-list">${stageItems}</div>
+      ${notes}
+    </div>`;
+  }).join('');
+
+  document.title = `Report — ${profile.full_name}`;
+  document.getElementById('report-content').innerHTML = `
+    <div class="report-hd">
+      <h1>${esc(profile.full_name)}</h1>
+      <div class="sub">${esc(profile.role)} · ${today}</div>
+    </div>
+    ${cards || '<div class="empty">No active projects.</div>'}`;
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+</script>
+</body>
+</html>
