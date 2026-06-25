@@ -169,17 +169,21 @@ function renderFilterOptions() {
 }
 
 function renderStats() {
-  const active = STATE.projects.filter(p => p.status === 'active');
-  const staleCount = active.filter(p => computeDerived(p).staleLevel === 'red').length;
+  const visibleActive = STATE.projects.filter(p => {
+    if (p.status !== 'active') return false;
+    if (isPI()) return true;
+    return p.owner_id === STATE.user.id || STATE.collaboratorProjectIds.has(p.id);
+  });
+  const staleCount = visibleActive.filter(p => computeDerived(p).staleLevel === 'red').length;
   if (isPI()) {
     const trainees = STATE.profiles.filter(p => p.role !== 'pi').length;
     document.getElementById('stat-row').innerHTML = `
-      <div class="stat"><div class="n">${active.length}</div><div class="l">active projects</div></div>
+      <div class="stat"><div class="n">${visibleActive.length}</div><div class="l">active projects</div></div>
       <div class="stat"><div class="n">${trainees}</div><div class="l">trainees</div></div>
       <div class="stat"><div class="n">${staleCount}</div><div class="l">stale (red)</div></div>`;
   } else {
     document.getElementById('stat-row').innerHTML = `
-      <div class="stat"><div class="n">${active.length}</div><div class="l">active projects</div></div>
+      <div class="stat"><div class="n">${visibleActive.length}</div><div class="l">active projects</div></div>
       <div class="stat"><div class="n">${staleCount}</div><div class="l">overdue</div></div>`;
   }
 }
