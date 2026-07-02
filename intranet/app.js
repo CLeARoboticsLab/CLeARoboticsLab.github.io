@@ -247,6 +247,12 @@ function renderProjectRow(project, d) {
   let pipelineHtml = '';
   if (stages.length <= 5) {
     pipelineHtml = stages.map((s, i) => stagePill(s.name, i, ci)).join(arrow());
+  } else if (ci < 0) {
+    // Current stage couldn't be matched (e.g. a name mismatch between
+    // stage_history and project_stages). Show the first few stages rather
+    // than indexing out of bounds, which would throw and blank the list.
+    pipelineHtml = stages.slice(0, 4).map((s, i) => stagePill(s.name, i, ci)).join(arrow())
+      + arrow() + `<span style="font-size:11px;color:var(--text-faint);align-self:center;">…</span>`;
   } else {
     const parts = [];
     if (ci > 0) {
@@ -497,13 +503,26 @@ async function savePdDetails() {
   // Save renames + dates for existing stages
   const nameInputs = document.querySelectorAll('.pd-stage-name[data-stage-id]');
   const dateInputs = document.querySelectorAll('.pd-stage-date[data-stage-id]');
+  // stage_history references stages by their name (a string snapshot), not by id,
+  // so a rename must be propagated to the history rows — otherwise the project's
+  // "current stage" can no longer be matched and the project appears to lose its place.
+  const oldNameById = new Map(project.project_stages.map(s => [String(s.id), s.name]));
   for (const input of nameInputs) {
     const stageId = input.dataset.stageId;
     const dateInput = document.querySelector(`.pd-stage-date[data-stage-id="${stageId}"]`);
+    const newName = input.value.trim() || input.value;
     await supabaseClient.from('project_stages').update({
-      name: input.value.trim() || input.value,
+      name: newName,
       target_date: dateInput ? (dateInput.value || null) : null,
     }).eq('id', stageId);
+
+    const oldName = oldNameById.get(String(stageId));
+    if (oldName && oldName !== newName) {
+      await supabaseClient.from('stage_history')
+        .update({ stage_name: newName })
+        .eq('project_id', project.id)
+        .eq('stage_name', oldName);
+    }
   }
   // Also save dates for past stages (which have no name input)
   for (const input of dateInputs) {
@@ -534,15 +553,22 @@ async function savePdDetails() {
   if (canManage(project)) {
     const checkedIds = [...document.querySelectorAll('.pd-collab-check:checked')].map(cb => cb.value);
     // Delete all existing and re-insert — simplest way to handle add/remove
-    await supabaseClient.from('project_collaborators').delete().eq('project_id', project.id);
+    const { error: delErr } = await supabaseClient.from('project_collaborators').delete().eq('project_id', project.id);
+    if (delErr) { msg.innerHTML = `<div class="msg error">Couldn't update collaborators: ${delErr.message}</div>`; return; }
     if (checkedIds.length > 0) {
-      await supabaseClient.from('project_collaborators')
+      const { error: insErr } = await supabaseClient.from('project_collaborators')
         .insert(checkedIds.map(profile_id => ({ project_id: project.id, profile_id })));
+      if (insErr) { msg.innerHTML = `<div class="msg error">Couldn't add collaborators: ${insErr.message}</div>`; return; }
     }
   }
 
-  msg.innerHTML = `<div class="msg ok">Saved.</div>`;
   await loadAll(); renderAll();
+  // Re-render the modal from the freshly-loaded state so any stage we just
+  // added now carries its database id. Without this, its input stays flagged
+  // as a "new" stage and a second "Save details" click would insert it again
+  // (this is how a project can accumulate dozens of duplicate stages).
+  openProjectModal(STATE.openProjectId);
+  document.getElementById('pd-msg').innerHTML = `<div class="msg ok">Saved.</div>`;
 }
 
 async function advanceStage() {
