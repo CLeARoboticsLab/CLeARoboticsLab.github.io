@@ -8,7 +8,9 @@ name: Lab project tracker — deadline reminders
 
 on:
   schedule:
-    - cron: '1 4 * * *'   # Daily 14:00 UTC
+    # Daily 14:00 UTC = 9am Austin during CDT (summer), 8am during CST (winter).
+    # GitHub cron is UTC and does NOT follow DST.
+    - cron: '0 14 * * *'
   workflow_dispatch:        # Allow manual trigger
 
 jobs:
