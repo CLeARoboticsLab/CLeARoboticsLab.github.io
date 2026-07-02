@@ -19,6 +19,7 @@ Deno.serve(async (req) => {
     usersResult,
     { data: profiles },
     { data: projects },
+    { data: collaborators },
   ] = await Promise.all([
     supabase.auth.admin.listUsers(),
     supabase.from("profiles").select("*"),
@@ -26,6 +27,7 @@ Deno.serve(async (req) => {
       .from("projects")
       .select("*, project_stages(*), stage_history(*)")
       .eq("status", "active"),
+    supabase.from("project_collaborators").select("project_id, profile_id"),
   ]);
 
   const users = usersResult.data?.users;
@@ -34,6 +36,23 @@ Deno.serve(async (req) => {
 
   const now = new Date();
   const results: string[] = [];
+
+  // Full membership of each project = owner + collaborators, treated equally.
+  const nameById = new Map((profiles ?? []).map((p: any) => [p.id, p.full_name]));
+  const collabsByProject = new Map<string, string[]>();
+  for (const c of collaborators ?? []) {
+    const arr = collabsByProject.get(c.project_id) ?? [];
+    arr.push(c.profile_id);
+    collabsByProject.set(c.project_id, arr);
+  }
+  const memberIds = (project: any): string[] =>
+    [...new Set([project.owner_id, ...(collabsByProject.get(project.id) ?? [])])];
+  // Names of everyone on the project except `exceptId`.
+  const coMemberNames = (project: any, exceptId: string): string[] =>
+    memberIds(project)
+      .filter((id) => id !== exceptId)
+      .map((id) => nameById.get(id))
+      .filter(Boolean) as string[];
 
   for (const project of projects ?? []) {
     const stages = (project.project_stages ?? []).sort(
@@ -64,38 +83,55 @@ Deno.serve(async (req) => {
     const ownerUser = users?.find((u: any) => u.id === project.owner_id);
     if (!ownerUser?.email || !ownerProfile) continue;
 
-    // ── Trainee reminder: every 2 days ───────────────────────
-    const { data: lastTraineeRow } = await supabase
-      .from("reminder_log")
-      .select("sent_at")
-      .eq("project_id", project.id)
-      .eq("reminder_type", "overdue_trainee")
-      .order("sent_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    // ── Reminders to everyone on the project: every 2 days ───
+    // The owner and every collaborator are nudged equally; each recipient's
+    // message names the rest of the team, and each is de-duplicated
+    // independently in reminder_log via a per-recipient reminder_type.
+    const recipients: { profile: any; user: any; type: string }[] = [];
+    for (const id of memberIds(project)) {
+      const prof = profiles?.find((p: any) => p.id === id);
+      const usr = users?.find((u: any) => u.id === id);
+      if (!prof || !usr) continue;
+      // Keep the owner's existing reminder_type for continuity; others are per-id.
+      const type = id === project.owner_id ? "overdue_trainee" : `overdue_collaborator:${id}`;
+      recipients.push({ profile: prof, user: usr, type });
+    }
 
-    const daysSinceTrainee = lastTraineeRow
-      ? (now.getTime() - new Date(lastTraineeRow.sent_at).getTime()) / 86400000
-      : Infinity;
+    for (const r of recipients) {
+      if (!r.user?.email) continue;
 
-    if (daysSinceTrainee >= 2) {
-      const slackId = await slackUserIdForEmail(ownerUser.email);
-      if (slackId) {
-        const blocks = overdueReminderBlocks({
-          traineeName: ownerProfile.full_name,
-          projectTitle: project.title,
-          stageName: currentStage.name,
-          dueDate: currentStage.target_date,
-          daysOverdue,
-          isPI: false,
-        });
-        const ok = await slackDM(slackId, blocks,
-          `Reminder: "${project.title}" stage is ${daysOverdue} day${daysOverdue === 1 ? "" : "s"} overdue`);
-        if (ok) {
-          await supabase.from("reminder_log")
-            .insert({ project_id: project.id, reminder_type: "overdue_trainee" });
-          results.push(`Trainee reminder → ${ownerProfile.full_name}: ${project.title}`);
-        }
+      const { data: lastRow } = await supabase
+        .from("reminder_log")
+        .select("sent_at")
+        .eq("project_id", project.id)
+        .eq("reminder_type", r.type)
+        .order("sent_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const daysSince = lastRow
+        ? (now.getTime() - new Date(lastRow.sent_at).getTime()) / 86400000
+        : Infinity;
+      if (daysSince < 2) continue;
+
+      const slackId = await slackUserIdForEmail(r.user.email);
+      if (!slackId) continue;
+
+      const blocks = overdueReminderBlocks({
+        traineeName: ownerProfile.full_name,
+        projectTitle: project.title,
+        stageName: currentStage.name,
+        dueDate: currentStage.target_date,
+        daysOverdue,
+        isPI: false,
+        coMembers: coMemberNames(project, r.profile.id),
+      });
+      const ok = await slackDM(slackId, blocks,
+        `Reminder: "${project.title}" stage is ${daysOverdue} day${daysOverdue === 1 ? "" : "s"} overdue`);
+      if (ok) {
+        await supabase.from("reminder_log")
+          .insert({ project_id: project.id, reminder_type: r.type });
+        results.push(`Reminder → ${r.profile.full_name}: ${project.title}`);
       }
     }
 
@@ -124,6 +160,7 @@ Deno.serve(async (req) => {
             dueDate: currentStage.target_date,
             daysOverdue,
             isPI: true,
+            coMembers: coMemberNames(project, piProfile?.id ?? ""),
           });
           const ok = await slackDM(piSlackId, blocks,
             `FYI: "${project.title}" (${ownerProfile.full_name}) is ${daysOverdue} days overdue`);

@@ -196,6 +196,10 @@ function renderProjectList() {
   const stageFilter = document.getElementById('filter-stage').value;
   const showArchived = document.getElementById('filter-archived').checked;
   const sortBy = document.getElementById('sort-by').value;
+  // Whose board are we centring on? A PI's trainee-filter selection, or a
+  // trainee viewing their own projects. Projects they lead (own) sort ahead of
+  // ones they only collaborate on.
+  const focusUid = ownerFilter || (!isPI() ? STATE.user.id : '');
 
   let rows = STATE.projects.filter(p => {
     if (!showArchived && p.status !== 'active') return false;
@@ -203,11 +207,19 @@ function renderProjectList() {
     if (!isPI() && p.owner_id !== STATE.user.id && !STATE.collaboratorProjectIds.has(p.id)) return false;
     return true;
   });
-  if (ownerFilter) rows = rows.filter(p => p.owner_id === ownerFilter);
+  // Filtering by a trainee shows projects they own AND those they collaborate on.
+  if (ownerFilter) rows = rows.filter(p =>
+    p.owner_id === ownerFilter || (p.internal_collaborator_ids || []).includes(ownerFilter));
   if (stageFilter) rows = rows.filter(p => { const d = computeDerived(p); return d.current && d.current.stage_name === stageFilter; });
 
   const withDerived = rows.map(p => ({ p, d: computeDerived(p) }));
   withDerived.sort((a, b) => {
+    // Lead (owned) projects first, then collaborations, then the chosen sort within each group.
+    if (focusUid) {
+      const aLeads = a.p.owner_id === focusUid ? 0 : 1;
+      const bLeads = b.p.owner_id === focusUid ? 0 : 1;
+      if (aLeads !== bLeads) return aLeads - bLeads;
+    }
     if (sortBy === 'stage_time') return b.d.stageWeeks - a.d.stageWeeks;
     if (sortBy === 'age') return b.d.ageWeeks - a.d.ageWeeks;
     if (sortBy === 'title') return a.p.title.localeCompare(b.p.title);
@@ -676,8 +688,9 @@ function wireEvents() {
 
   document.getElementById('btn-report').addEventListener('click', () => {
     const ownerFilter = document.getElementById('filter-owner').value;
-    const uid = ownerFilter || STATE.user.id;
-    window.open(`report.html?uid=${uid}`, '_blank');
+    // With a trainee selected → that trainee's report. Otherwise no uid:
+    // report.html gives a PI the all-lab report and a trainee their own.
+    window.open(ownerFilter ? `report.html?uid=${ownerFilter}` : 'report.html', '_blank');
   });
   updateReportButton();
 

@@ -74,6 +74,8 @@ export interface Project {
   created_at: string;
   project_stages: Stage[];
   stage_history: HistoryEntry[];
+  _isCollaboration?: boolean;
+  _coMembers?: string[]; // everyone else on the project (owner + collaborators, equally)
 }
 
 export function weeklyReportBlocks(traineeName: string, projects: Project[]): object[] {
@@ -135,13 +137,15 @@ export function weeklyReportBlocks(traineeName: string, projects: Project[]): ob
     const venue = p.target_venue ? ` · ${p.target_venue}` : "";
     const collab = p.collaborators ? `\nw/ ${p.collaborators}` : "";
     const notes = p.notes ? `\n> ${p.notes}` : "";
+    // Everyone else on the project (owner + collaborators, listed equally).
+    const team = p._coMembers && p._coMembers.length ? `\n👥 with ${p._coMembers.join(", ")}` : "";
 
     blocks.push(
       {
         type: "section",
         text: {
           type: "mrkdwn",
-          text: `*${p.title}*\n${ageWeeks} wk active${venue}${collab}${timingStr}\n${pipelineStr}${notes}`,
+          text: `*${p.title}*\n${ageWeeks} wk active${venue}${team}${collab}${timingStr}\n${pipelineStr}${notes}`,
         },
       },
       { type: "divider" },
@@ -158,10 +162,20 @@ export function overdueReminderBlocks(opts: {
   dueDate: string;
   daysOverdue: number;
   isPI: boolean;
+  coMembers?: string[]; // everyone else on the project (owner + collaborators, equally)
 }): object[] {
   const intro = opts.isPI
     ? `*${opts.traineeName}*'s project has been past its stage deadline for *${opts.daysOverdue} day${opts.daysOverdue === 1 ? "" : "s"}*.`
-    : `A stage on one of your projects is past its target date.`;
+    : `A stage on a project you're on is past its target date.`;
+
+  const fields: object[] = [
+    { type: "mrkdwn", text: `*Project*\n${opts.projectTitle}` },
+    { type: "mrkdwn", text: `*Stage*\n${opts.stageName}` },
+    { type: "mrkdwn", text: `*Was due*\n${fmtDate(opts.dueDate)} — ${opts.daysOverdue}d ago` },
+  ];
+  if (opts.coMembers && opts.coMembers.length) {
+    fields.push({ type: "mrkdwn", text: `*Collaborators*\n${opts.coMembers.join(", ")}` });
+  }
 
   const blocks: object[] = [
     {
@@ -172,15 +186,7 @@ export function overdueReminderBlocks(opts: {
       type: "section",
       text: { type: "mrkdwn", text: intro },
     },
-    {
-      type: "section",
-      fields: [
-        ...(opts.isPI ? [{ type: "mrkdwn", text: `*Trainee*\n${opts.traineeName}` }] : []),
-        { type: "mrkdwn", text: `*Project*\n${opts.projectTitle}` },
-        { type: "mrkdwn", text: `*Stage*\n${opts.stageName}` },
-        { type: "mrkdwn", text: `*Was due*\n${fmtDate(opts.dueDate)} — ${opts.daysOverdue}d ago` },
-      ],
-    },
+    { type: "section", fields },
   ];
 
   if (!opts.isPI) {

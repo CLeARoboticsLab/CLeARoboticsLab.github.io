@@ -19,6 +19,7 @@ Deno.serve(async (req) => {
     usersResult,
     { data: profiles, error: profilesError },
     { data: projects, error: projectsError },
+    { data: collaborators, error: collaboratorsError },
   ] = await Promise.all([
     supabase.auth.admin.listUsers(),
     supabase.from("profiles").select("*"),
@@ -26,18 +27,34 @@ Deno.serve(async (req) => {
       .from("projects")
       .select("*, project_stages(*), stage_history(*)")
       .eq("status", "active"),
+    supabase.from("project_collaborators").select("project_id, profile_id"),
   ]);
 
   const users = usersResult.data?.users;
   if (usersResult.error) console.log("listUsers error:", usersResult.error);
   if (profilesError) console.log("profiles error:", profilesError);
   if (projectsError) console.log("projects error:", projectsError);
+  if (collaboratorsError) console.log("collaborators error:", collaboratorsError);
 
   const trainees = (profiles ?? []).filter((p) => p.role !== "pi");
   const piProfile = (profiles ?? []).find((p) => p.role === "pi");
   const piUser = users?.find((u) => u.id === piProfile?.id);
   const piSlackId = piUser?.email ? await slackUserIdForEmail(piUser.email) : null;
   const results: string[] = [];
+
+  // Full membership of each project = owner + collaborators, treated equally.
+  const nameById = new Map((profiles ?? []).map((p: any) => [p.id, p.full_name]));
+  const collabsByProject = new Map<string, string[]>();
+  for (const c of collaborators ?? []) {
+    const arr = collabsByProject.get(c.project_id) ?? [];
+    arr.push(c.profile_id);
+    collabsByProject.set(c.project_id, arr);
+  }
+  const coMemberNames = (project: any, exceptId: string): string[] =>
+    [...new Set([project.owner_id, ...(collabsByProject.get(project.id) ?? [])])]
+      .filter((id) => id !== exceptId)
+      .map((id) => nameById.get(id))
+      .filter(Boolean) as string[];
 
   for (const trainee of trainees) {
     const traineeUser = users?.find((u) => u.id === trainee.id);
@@ -46,10 +63,18 @@ Deno.serve(async (req) => {
       continue;
     }
 
+    // Projects this trainee owns plus the ones they collaborate on.
+    const collabProjectIds = new Set(
+      (collaborators ?? [])
+        .filter((c) => c.profile_id === trainee.id)
+        .map((c) => c.project_id),
+    );
     const traineeProjects = (projects ?? [])
-      .filter((p) => p.owner_id === trainee.id)
+      .filter((p) => p.owner_id === trainee.id || collabProjectIds.has(p.id))
       .map((p) => ({
         ...p,
+        _isCollaboration: p.owner_id !== trainee.id,
+        _coMembers: coMemberNames(p, trainee.id),
         project_stages: (p.project_stages ?? []).sort(
           (a: any, b: any) => a.sort_order - b.sort_order,
         ),
@@ -57,7 +82,9 @@ Deno.serve(async (req) => {
           (a: any, b: any) =>
             new Date(a.entered_at).getTime() - new Date(b.entered_at).getTime(),
         ),
-      }));
+      }))
+      // Lead (owned) projects first, then collaborations.
+      .sort((a, b) => Number(a._isCollaboration) - Number(b._isCollaboration));
 
     if (traineeProjects.length === 0) {
       console.log(`${trainee.full_name}: no active projects, skipping`);
