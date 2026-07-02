@@ -9,7 +9,9 @@ name: Lab project tracker — weekly report
 
 on:
   schedule:
-    - cron: '1 4 * * 1'   # Every Monday 14:00 UTC
+    # Mondays 14:00 UTC = 9am Austin during CDT (summer), 8am during CST (winter).
+    # GitHub cron is UTC and does NOT follow DST.
+    - cron: '0 14 * * 1'
   workflow_dispatch:        # Allow manual trigger from the Actions tab
 
 jobs:
