@@ -256,26 +256,26 @@ function renderProjectRow(project, d) {
   // Stage pipeline
   const stages = d.stages;
   const ci = d.currentIndex;
+  // Show every stage for typical projects; for long pipelines, window around the
+  // current stage — a little history for context plus several upcoming stages.
+  // (The pillbox wraps, so extra pills fill otherwise-empty horizontal space.)
+  const MAX_INLINE = 8;
   let pipelineHtml = '';
-  if (stages.length <= 5) {
+  if (stages.length <= MAX_INLINE) {
     pipelineHtml = stages.map((s, i) => stagePill(s.name, i, ci)).join(arrow());
   } else if (ci < 0) {
     // Current stage couldn't be matched (e.g. a name mismatch between
-    // stage_history and project_stages). Show the first few stages rather
-    // than indexing out of bounds, which would throw and blank the list.
-    pipelineHtml = stages.slice(0, 4).map((s, i) => stagePill(s.name, i, ci)).join(arrow())
-      + arrow() + `<span style="font-size:11px;color:var(--text-faint);align-self:center;">…</span>`;
+    // stage_history and project_stages). Show the first several rather than
+    // indexing out of bounds, which would throw and blank the list.
+    pipelineHtml = stages.slice(0, 6).map((s, i) => stagePill(s.name, i, ci)).join(arrow())
+      + arrow() + ellipsis();
   } else {
+    const start = Math.max(0, ci - 2);
+    const end = Math.min(stages.length - 1, ci + 4);
     const parts = [];
-    if (ci > 0) {
-      if (ci > 1) parts.push(`<span style="font-size:11px;color:var(--text-faint);align-self:center;">…</span>`);
-      parts.push(stagePill(stages[ci - 1].name, ci - 1, ci));
-    }
-    parts.push(stagePill(stages[ci].name, ci, ci));
-    if (ci < stages.length - 1) {
-      parts.push(stagePill(stages[ci + 1].name, ci + 1, ci));
-      if (ci < stages.length - 2) parts.push(`<span style="font-size:11px;color:var(--text-faint);align-self:center;">…</span>`);
-    }
+    if (start > 0) parts.push(ellipsis());
+    for (let i = start; i <= end; i++) parts.push(stagePill(stages[i].name, i, ci));
+    if (end < stages.length - 1) parts.push(ellipsis());
     pipelineHtml = parts.join(arrow());
   }
 
@@ -306,6 +306,10 @@ function stagePill(name, index, currentIndex) {
 
 function arrow() {
   return `<span style="font-size:10px;color:var(--text-faint);align-self:center;flex-shrink:0;">›</span>`;
+}
+
+function ellipsis() {
+  return `<span style="font-size:11px;color:var(--text-faint);align-self:center;">…</span>`;
 }
 
 function escapeHtml(s) {
@@ -427,7 +431,9 @@ function openProjectModal(id) {
   stageDatesDiv.innerHTML = d.stages.map((s, i) => {
     const isPast = i < d.currentIndex;
     const isCurrent = i === d.currentIndex;
-    const canDelete = canManage(project) && !isPast && !isCurrent;
+    // Any editor (owner, PI, or collaborator) may remove a planned stage —
+    // the current one or any future one; completed (past) stages stay locked.
+    const canDelete = canEdit(project) && !isPast;
     const nameEditable = canEdit(project) && !isPast;
     const nameEl = nameEditable
       ? `<input type="text" value="${escapeHtml(s.name)}" data-stage-id="${s.id}" class="pd-stage-name" style="flex:1; font-size:13px; ${isCurrent ? 'color:var(--accent); font-weight:500;' : ''}">`
@@ -446,9 +452,21 @@ function openProjectModal(id) {
   if (canEdit(project)) {
     stageDatesDiv.querySelectorAll('.pd-delete-stage').forEach(btn => {
       btn.addEventListener('click', async () => {
+        const stageId = btn.dataset.stageId;
         const name = btn.dataset.stageName;
         if (!confirm(`Remove the "${name}" stage from this project? This can't be undone.`)) return;
-        await supabaseClient.from('project_stages').delete().eq('id', btn.dataset.stageId);
+
+        // If we're deleting the current stage, move the project's "current" marker
+        // to the next stage (or the previous one if this was the last) so the open
+        // stage_history entry keeps pointing at a real stage.
+        if (d.current && d.currentIndex >= 0 && d.stages[d.currentIndex]?.id === stageId) {
+          const target = d.stages[d.currentIndex + 1] || d.stages[d.currentIndex - 1] || null;
+          if (target) {
+            await supabaseClient.from('stage_history')
+              .update({ stage_name: target.name }).eq('id', d.current.id);
+          }
+        }
+        await supabaseClient.from('project_stages').delete().eq('id', stageId);
         await loadAll(); renderAll(); openProjectModal(STATE.openProjectId);
       });
     });
