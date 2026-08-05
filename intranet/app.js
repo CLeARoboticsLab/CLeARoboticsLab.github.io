@@ -338,7 +338,9 @@ function loadTemplateIntoEditor(templateId) {
 function renderStageEditor() {
   const box = document.getElementById('np-stage-editor');
   box.innerHTML = STATE.newStageEditor.map((s, i) => `
-    <div class="stage-editor-row">
+    <div class="stage-editor-row" data-idx="${i}">
+      <span class="se-drag" draggable="true" data-idx="${i}" title="Drag to reorder"
+        style="cursor:grab;user-select:none;color:var(--text-faint);padding:0 2px;">⠿</span>
       <input type="text" value="${escapeHtml(s.name)}" data-idx="${i}" class="se-name" placeholder="Stage name">
       <input type="date" value="${s.target_date || ''}" data-idx="${i}" class="se-date" style="width:160px;" title="Target completion date">
       <div class="order-btns">
@@ -363,6 +365,48 @@ function renderStageEditor() {
     [STATE.newStageEditor[i], STATE.newStageEditor[j]] = [STATE.newStageEditor[j], STATE.newStageEditor[i]];
     renderStageEditor();
   }));
+
+  // Drag-to-reorder via the grip handle (complements the ▲▼ buttons).
+  let dragFrom = null;
+  box.querySelectorAll('.se-drag').forEach(handle => {
+    handle.addEventListener('dragstart', e => {
+      dragFrom = +handle.dataset.idx;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(dragFrom)); // Firefox requires data
+      handle.closest('.stage-editor-row').style.opacity = '0.4';
+    });
+    handle.addEventListener('dragend', () => {
+      const row = handle.closest('.stage-editor-row');
+      if (row) row.style.opacity = '';
+    });
+  });
+  box.querySelectorAll('.stage-editor-row').forEach(row => {
+    row.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+    row.addEventListener('drop', e => {
+      e.preventDefault();
+      const to = +row.dataset.idx;
+      const from = dragFrom;
+      dragFrom = null;
+      if (from === null || Number.isNaN(to) || from === to) return;
+      const arr = STATE.newStageEditor;
+      const [moved] = arr.splice(from, 1);
+      arr.splice(to, 0, moved);
+      renderStageEditor();
+    });
+  });
+}
+
+// True if any dated stage falls before a stage earlier in the sequence
+// (nulls/blank dates are skipped). Used to block out-of-order saves.
+function datesOutOfOrder(dates) {
+  let last = null;
+  for (const ds of dates) {
+    if (!ds) continue;
+    const d = new Date(ds);
+    if (last && d < last) return true;
+    last = d;
+  }
+  return false;
 }
 
 async function submitNewProject(e) {
@@ -371,6 +415,9 @@ async function submitNewProject(e) {
   msg.innerHTML = '';
   if (STATE.newStageEditor.length === 0) {
     msg.innerHTML = '<div class="msg error">Add at least one stage.</div>'; return;
+  }
+  if (datesOutOfOrder(STATE.newStageEditor.map(s => s.target_date))) {
+    msg.innerHTML = "<div class=\"msg error\">Changes not saved — stage target dates aren't in chronological order.</div>"; return;
   }
   const title = document.getElementById('np-title').value.trim();
   const owner_id = isPI() ? document.getElementById('np-owner').value : STATE.user.id;
@@ -438,9 +485,12 @@ function openProjectModal(id) {
     const nameEl = nameEditable
       ? `<input type="text" value="${escapeHtml(s.name)}" data-stage-id="${s.id}" class="pd-stage-name" style="flex:1; font-size:13px; ${isCurrent ? 'color:var(--accent); font-weight:500;' : ''}">`
       : `<span style="flex:1; font-size:13px; color:var(--text-faint); text-decoration:line-through;">${escapeHtml(s.name)}</span>`;
+    const dragHandle = canEdit(project)
+      ? `<span class="pd-drag" draggable="true" title="Drag to reorder" style="cursor:grab;user-select:none;color:var(--text-faint);padding:0 2px;flex-shrink:0;">⠿</span>`
+      : '';
     return `
     <div class="stage-editor-row" style="margin-bottom:5px;">
-      ${nameEl}
+      ${dragHandle}${nameEl}
       <input type="date" value="${s.target_date || ''}" data-stage-id="${s.id}"
         class="pd-stage-date" style="width:160px;" ${canEdit(project) ? '' : 'disabled'}>
       ${canDelete ? `<button type="button" class="subtle pd-delete-stage" data-stage-id="${s.id}" data-stage-name="${escapeHtml(s.name)}" title="Remove this stage">✕</button>` : '<span style="width:32px;flex-shrink:0;"></span>'}
@@ -520,6 +570,13 @@ async function savePdDetails() {
   const project = STATE.projects.find(p => p.id === STATE.openProjectId);
   const msg = document.getElementById('pd-msg');
 
+  // Refuse to save if the stage target dates run backwards in sequence.
+  const pdDates = [...document.querySelectorAll('#pd-stage-dates .pd-stage-date')].map(el => el.value || null);
+  if (datesOutOfOrder(pdDates)) {
+    msg.innerHTML = "<div class=\"msg error\">Changes not saved — stage target dates aren't in chronological order.</div>";
+    return;
+  }
+
   // Save project fields
   const updates = {
     target_venue: document.getElementById('pd-venue').value || null,
@@ -530,52 +587,43 @@ async function savePdDetails() {
   const { error } = await supabaseClient.from('projects').update(updates).eq('id', project.id);
   if (error) { msg.innerHTML = `<div class="msg error">${error.message}</div>`; return; }
 
-  // Save renames + dates for existing stages
-  const nameInputs = document.querySelectorAll('.pd-stage-name[data-stage-id]');
-  const dateInputs = document.querySelectorAll('.pd-stage-date[data-stage-id]');
-  // stage_history references stages by their name (a string snapshot), not by id,
-  // so a rename must be propagated to the history rows — otherwise the project's
-  // "current stage" can no longer be matched and the project appears to lose its place.
+  // Persist stages in their current on-screen order (drag-to-reorder), together
+  // with renames, dates, and any newly added rows. stage_history references
+  // stages by name (a string snapshot), so a rename is propagated to history —
+  // otherwise the project's "current stage" can no longer be matched.
   const oldNameById = new Map(project.project_stages.map(s => [String(s.id), s.name]));
-  for (const input of nameInputs) {
-    const stageId = input.dataset.stageId;
-    const dateInput = document.querySelector(`.pd-stage-date[data-stage-id="${stageId}"]`);
-    const newName = input.value.trim() || input.value;
-    await supabaseClient.from('project_stages').update({
-      name: newName,
-      target_date: dateInput ? (dateInput.value || null) : null,
-    }).eq('id', stageId);
+  const rows = [...document.querySelectorAll('#pd-stage-dates .stage-editor-row')];
+  const toInsert = [];
+  for (let i = 0; i < rows.length; i++) {
+    const sort_order = i + 1;
+    const dateEl = rows[i].querySelector('.pd-stage-date');
+    const nameEl = rows[i].querySelector('.pd-stage-name'); // input for current/future/new; absent for past
+    const target_date = dateEl?.value || null;
+    const stageId = dateEl?.dataset.stageId;                // present only for existing stages
 
-    const oldName = oldNameById.get(String(stageId));
-    if (oldName && oldName !== newName) {
-      await supabaseClient.from('stage_history')
-        .update({ stage_name: newName })
-        .eq('project_id', project.id)
-        .eq('stage_name', oldName);
-    }
-  }
-  // Also save dates for past stages (which have no name input)
-  for (const input of dateInputs) {
-    if (!document.querySelector(`.pd-stage-name[data-stage-id="${input.dataset.stageId}"]`)) {
-      await supabaseClient.from('project_stages')
-        .update({ target_date: input.value || null })
-        .eq('id', input.dataset.stageId);
-    }
-  }
-
-  // Save new stages (those without a data-stage-id)
-  const newStageRows = document.querySelectorAll('.pd-stage-name:not([data-stage-id])');
-  if (newStageRows.length > 0) {
-    const maxOrder = Math.max(...project.project_stages.map(s => s.sort_order), 0);
-    const toInsert = [...newStageRows].map((nameEl, i) => {
-      const dateEl = nameEl.closest('.stage-editor-row').querySelector('.pd-stage-date');
-      return {
+    if (stageId) {
+      const update = { sort_order, target_date };
+      if (nameEl) {                                         // renameable (current/future) stage
+        const newName = nameEl.value.trim() || nameEl.value;
+        update.name = newName;
+        const oldName = oldNameById.get(String(stageId));
+        if (oldName && oldName !== newName) {
+          await supabaseClient.from('stage_history')
+            .update({ stage_name: newName })
+            .eq('project_id', project.id).eq('stage_name', oldName);
+        }
+      }
+      await supabaseClient.from('project_stages').update(update).eq('id', stageId);
+    } else if (nameEl) {                                    // brand-new stage added this session
+      toInsert.push({
         project_id: project.id,
         name: nameEl.value.trim() || 'New stage',
-        sort_order: maxOrder + i + 1,
-        target_date: dateEl?.value || null,
-      };
-    });
+        sort_order,
+        target_date,
+      });
+    }
+  }
+  if (toInsert.length) {
     await supabaseClient.from('project_stages').insert(toInsert);
   }
 
@@ -719,11 +767,43 @@ function wireEvents() {
     row.className = 'stage-editor-row';
     row.style.marginBottom = '5px';
     row.innerHTML = `
+      <span class="pd-drag" draggable="true" title="Drag to reorder" style="cursor:grab;user-select:none;color:var(--text-faint);padding:0 2px;flex-shrink:0;">⠿</span>
       <input type="text" placeholder="Stage name" class="pd-stage-name" style="flex:1; font-size:13px;">
       <input type="date" class="pd-stage-date" style="width:160px;">
       <button type="button" class="subtle" title="Remove" onclick="this.closest('.stage-editor-row').remove()">✕</button>`;
     stageDatesDiv.appendChild(row);
   });
+
+  // Drag-to-reorder for the detail-modal stage list. Delegated on the container
+  // (wired once) so it also covers stages added after the modal was rendered;
+  // the new order is written as sort_order when "Save details" is clicked.
+  const pdStages = document.getElementById('pd-stage-dates');
+  let pdDragged = null;
+  pdStages.addEventListener('dragstart', e => {
+    const handle = e.target.closest('.pd-drag');
+    if (!handle) return;
+    pdDragged = handle.closest('.stage-editor-row');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', 'stage'); // Firefox requires data
+    pdDragged.style.opacity = '0.4';
+  });
+  pdStages.addEventListener('dragend', () => { if (pdDragged) pdDragged.style.opacity = ''; });
+  pdStages.addEventListener('dragover', e => {
+    if (pdDragged) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
+  });
+  pdStages.addEventListener('drop', e => {
+    if (!pdDragged) return;
+    e.preventDefault();
+    const row = e.target.closest('.stage-editor-row');
+    if (row && row !== pdDragged && row.parentNode === pdStages) {
+      const kids = [...pdStages.children];
+      if (kids.indexOf(pdDragged) < kids.indexOf(row)) row.after(pdDragged);
+      else row.before(pdDragged);
+    }
+    pdDragged.style.opacity = '';
+    pdDragged = null;
+  });
+
   document.getElementById('pd-advance').addEventListener('click', advanceStage);
   document.getElementById('pd-back').addEventListener('click', moveBack);
   document.getElementById('pd-archive').addEventListener('click', toggleArchive);
