@@ -1,6 +1,6 @@
 ---
 name: Janani S K
-position: visiting
+position: undergraduate
 avatar: janani.jpeg
 ---
 
