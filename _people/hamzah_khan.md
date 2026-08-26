@@ -1,6 +1,6 @@
 ---
 name: Hamzah Khan
-position: gradstudent
+position: alumni
 avatar: hamzah_khan.jpg
 ---
 

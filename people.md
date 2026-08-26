@@ -60,6 +60,7 @@ permalink: /people/
 
 | Who are they | When were they here | Where they went |
 | :------------- |:-------------| :-----------|
+| [Hamzah Khan](https://www.linkedin.com/in/hamzah-khan) | PhD student in ASE (2021-2026) | Waymo |
 | [Kaitlyn Donnel](https://www.linkedin.com/in/kaitlyndonnel/) | Undergraduate student in ASE (2024-2026) | Axiom Space |
 | [Nguyen Ly](https://www.linkedin.com/in/ngly712/) | Undergraduate student in ASE and Physics (2024-2025) | MS student in ASE at UT Austin |
 | [Cade Armstrong](https://www.linkedin.com/in/cade-armstrong-377b1b97/) | Undergraduate student in ASE (2023-2025) | PhD student in ASE at UT Austin |
