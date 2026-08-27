@@ -1,6 +1,6 @@
 ---
 name: Yash Jain
-position: undergraduate
+position: alumni
 avatar: Yash_Jain.jpeg
 ---
 
