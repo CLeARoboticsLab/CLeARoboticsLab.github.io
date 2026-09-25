@@ -1,3 +1,7 @@
+- date: 2026-09-25
+  details: >-
+    We submitted <a href="https://arxiv.org/pdf/2609.12278">Amortized Low-Rank Adaptation for Model-Based Reinforcement Learning</a> to ICLR 2027.
+
 - date: 2026-08-25
   details: >-
     Our paper <a href="https://arxiv.org/pdf/2604.03449">Neural Operators for Multi-Task Control and Adaptation</a> was accepted to TMLR.
