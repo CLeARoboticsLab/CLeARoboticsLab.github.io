@@ -1,7 +1,7 @@
 ---
 name: Jaehan Im
 position: gradstudent
-avatar: jaehan_im.jpg
+avatar: jaehan_im.jpeg
 joined: 2023
 ---
 
@@ -17,4 +17,4 @@ POB 5.204<br>
 2317 Speedway,
 Austin, TX 78712
 
-[Jaehan Im](https://www.linkedin.com/in/jaehanim/) is a PhD student at the University of Texas at Austin. His main research interest includes decentralized control of a multi-agent system, Interaction between humans and the autonomous system with special emphasis on the safety-critical system.
+[Jaehan Im](https://sites.google.com/view/jaehanim/) is a fourth-year Ph.D. student in Aerospace Engineering and Engineering Mechanics at The University of Texas at Austin. Prior to UT, he received the B.S. and M.S. degrees in Aerospace Engineering from the Korea Advanced Institute of Science and Technology (KAIST), Republic of Korea. His research includes game-theoretic coordination, robust equilibrium steering, and air traffic management for advanced air mobility.
