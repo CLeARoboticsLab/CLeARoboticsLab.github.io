@@ -1,13 +1,22 @@
+- date: 2026-10-05
+  details: >-
+    Dr. Brett Barkley successfully defended his PhD dissertation!
+
+- date: 2026-09-30
+  details: >-
+    We submitted <a href="https://arxiv.org/pdf/2610.02112">Binary Phase Retrieval of Cosine Transforms via Local Curvature Minimization</a> to Transactions on Signal Processing.
+
 - date: 2026-09-28
   details: >-
     We submitted <a href="https://arxiv.org/pdf/2609.37612">Cascaded Consensus Splitting for Multi-branch Contingency Games</a> to RA-L.
+
 - date: 2026-09-26
   details: >-
     Our paper <a href="https://arxiv.org/abs/2511.17625">Iterative Negotiation and Oversight: A Case Study in Decentralized Air Traffic Management</a> was accepted to Transportation Research Part C: Emerging Technologies.
 
 - date: 2026-09-25
   details: >-
-    We submitted <a href="https://arxiv.org/pdf/2610.01319">Cross-Entropy Optimization with Prioritized Constraints</a> and <a href="https://arxiv.org/pdf/2609.12278">Amortized Low-Rank Adaptation for Model-Based Reinforcement Learning</a>.
+    We submitted <a href="https://arxiv.org/pdf/2610.02505">Multi-Fidelity Policy Gradients Stabilize Data-Scarce Reinforcement Learning</a>, <a href="https://arxiv.org/pdf/2610.01319">Cross-Entropy Optimization with Prioritized Constraints</a> and <a href="https://arxiv.org/pdf/2609.12278">Amortized Low-Rank Adaptation for Model-Based Reinforcement Learning</a>.
 
 - date: 2026-09-10
   details: >-
