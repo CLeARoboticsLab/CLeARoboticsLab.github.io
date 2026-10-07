@@ -16,7 +16,7 @@
 
 - date: 2026-09-25
   details: >-
-    We submitted <a href="https://arxiv.org/pdf/2610.02505">Multi-Fidelity Policy Gradients Stabilize Data-Scarce Reinforcement Learning</a>, <a href="https://arxiv.org/pdf/2610.01319">Cross-Entropy Optimization with Prioritized Constraints</a> and <a href="https://arxiv.org/pdf/2609.12278">Amortized Low-Rank Adaptation for Model-Based Reinforcement Learning</a>.
+    We submitted <a href="https://arxiv.org/pdf/2610.04010"><i>Q</i> Can Play That Game: Online Fitted <i>Q</i>-Iteration for Continuous-Action Zero-Sum Markov Games with Convex-Concave Function Approximation</a>, <a href="https://arxiv.org/pdf/2610.02505">Multi-Fidelity Policy Gradients Stabilize Data-Scarce Reinforcement Learning</a>, <a href="https://arxiv.org/pdf/2610.01319">Cross-Entropy Optimization with Prioritized Constraints</a> and <a href="https://arxiv.org/pdf/2609.12278">Amortized Low-Rank Adaptation for Model-Based Reinforcement Learning</a>.
 
 - date: 2026-09-10
   details: >-
