@@ -5,7 +5,7 @@ permalink: /QandA/
 
 ### Questions and Answers for Graduate Students
 
-This Q&A is divided into four main categories: Research, Advising, Funding, and Lab Culture. They are tailored to PhD students but can be relevant to Master's students as well.
+This Q&A is divided into four main categories: Research, Advising, Funding, and Lab Culture. They are tailored to PhD students but can be relevant to Master's and undergraduate students as well.
 
 ### Research
 

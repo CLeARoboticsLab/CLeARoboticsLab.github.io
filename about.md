@@ -24,8 +24,14 @@ Our group started in August 2021. Visit our [people page]({% link people.md %}) 
 
 Visit the [Q&A]({% link QandA.md %}) page to learn more about what research is like in our lab.
 
+### AI usage
+
+Visit the [AI]({% link AI.md %}) page to read our lab's AI policy.
+
 ### Prospective students
 
 If you are a prospective *graduate student*, please feel free to reach out to David by email to express your interest. In your note, please identify one recent publication from the lab that you find interesting, and explain the technical nugget you found most exciting. Please also mention your favorite math class and the most exciting topic you learned in that class.
 
 Our lab also supports highly motivated undergraduate researchers. If you are an *undergraduate student* and would like to get involved, please understand that the vast majority of work we do is mathematically-oriented. To see if you might be a good fit, please do the following: _(i)_ read the first two chapters of [this textbook](https://www.ime.unicamp.br/~pulino/MT404/TextosOnline/NocedalJ.pdf), and if you find the concepts exciting then _(ii)_ email David to set up a time to chat about how you might get involved in the lab. At the meeting, be ready to explain key technical ideas you learned from your reading.
+
+**Warning: emails that appear to be written by AI tools will almost surely be ignored.**
