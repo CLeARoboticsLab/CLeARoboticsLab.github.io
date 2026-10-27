@@ -22,6 +22,10 @@
   details: >-
     We submitted <a href="https://arxiv.org/pdf/2609.14053">Characterizing Identifiability and Generalization for Inverse Receding-Horizon Linear-Quadratic Regulator Problems</a> to L-CSS.
 
+- date: 2026-09-04
+  details: >-
+    Our paper <a href="https://openreview.net/pdf?id=W443fVglzC">Explore Where It Matters: Targeted Exploration for Efficient Rover Adaptation</a> was accepted to CoRL 2026.
+
 - date: 2026-08-25
   details: >-
     Our paper <a href="https://arxiv.org/pdf/2604.03449">Neural Operators for Multi-Task Control and Adaptation</a> was accepted to TMLR.
