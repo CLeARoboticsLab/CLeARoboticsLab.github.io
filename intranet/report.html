@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lab project tracker · report</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  .proj-card {
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+    background: var(--surface);
+  }
+  .proj-card-title { font-family: var(--font-serif); font-size: 16px; font-weight: 600; margin: 0 0 2px; }
+  .proj-card-meta { font-size: 12px; color: var(--text-muted); margin: 0; }
+  .stage-list { margin: 10px 0 0; border-top: 1px solid var(--border); padding-top: 8px; }
+  .stage-item {
+    display: flex; align-items: baseline; gap: 8px;
+    padding: 5px 0; font-size: 13px;
+    border-bottom: 1px solid var(--border);
+  }
+  .stage-item:last-child { border-bottom: none; }
+  .stage-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+  .stage-done .stage-dot { background: var(--text-faint); }
+  .stage-done .stage-item-name { color: var(--text-faint); text-decoration: line-through; }
+  .stage-current .stage-dot { background: var(--accent); }
+  .stage-current .stage-item-name { font-weight: 600; color: var(--accent); }
+  .stage-future .stage-dot { background: var(--border); }
+  .stage-date { margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+  .stage-overdue .stage-date { color: var(--bad); }
+  .proj-notes { font-size: 12px; color: var(--text-muted); margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--border); }
+  .report-hd { margin-bottom: 2rem; }
+  .report-hd h1 { font-size: 22px; margin-bottom: 4px; }
+  .report-hd .sub { color: var(--text-muted); font-size: 13px; }
+
+  @media print {
+    .no-print { display: none !important; }
+    .wrap { padding: 1rem; }
+    .proj-card { break-inside: avoid; }
+    @page { margin: 1.5cm; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar no-print" style="margin-bottom:1.5rem;">
+    <div style="font-family:var(--font-serif); font-size:18px; font-weight:600;">Lab project report</div>
+    <div style="display:flex; gap:8px;">
+      <button onclick="window.print()" class="primary">🖨 Print / save PDF</button>
+      <button onclick="window.location.href='dashboard.html'">← Dashboard</button>
+    </div>
+  </div>
+
+  <div id="report-content"><div class="empty">Loading…</div></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script>
+const WEEK_MS = 7 * 24 * 3600 * 1000;
+
+(async function init() {
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (!session) { window.location.href = 'auth.html'; return; }
+
+  const params = new URLSearchParams(window.location.search);
+  const requestedUid = params.get('uid');
+
+  // Check whether the current user is allowed to view this report
+  const { data: myProfile } = await supabaseClient
+    .from('profiles').select('*').eq('id', session.user.id).single();
+  const isPI = myProfile?.role === 'pi';
+
+  // Every lab member's name, and each project's full membership (owner +
+  // collaborators, treated equally) so cards can list the whole team.
+  const [{ data: allProfiles }, { data: allCollabs }] = await Promise.all([
+    supabaseClient.from('profiles').select('id, full_name'),
+    supabaseClient.from('project_collaborators').select('project_id, profile_id'),
+  ]);
+  const nameById = Object.fromEntries((allProfiles || []).map(p => [p.id, p.full_name]));
+  const membersByProject = {};
+  for (const c of (allCollabs || [])) (membersByProject[c.project_id] ||= []).push(c.profile_id);
+  const withMembers = (list) => list.map(p => ({
+    ...p, _memberIds: [...new Set([p.owner_id, ...(membersByProject[p.id] || [])])],
+  }));
+
+  // A PI with no specific trainee selected gets a lab-wide report of every
+  // active project, sorted by how long each has sat in its current stage.
+  const allMode = isPI && !requestedUid;
+
+  if (allMode) {
+    const { data: projects } = await supabaseClient.from('projects')
+      .select('*, project_stages(*), stage_history(*)')
+      .eq('status', 'active');
+    const processed = withMembers((projects || []).map(process))
+      .sort((a, b) => b._stageMs - a._stageMs); // longest in current stage first
+    renderReport(
+      { title: 'All lab projects',
+        subtitle: `${processed.length} active project${processed.length === 1 ? '' : 's'}`,
+        listTeam: true },
+      processed, nameById,
+    );
+    return;
+  }
+
+  const uid = requestedUid || session.user.id;
+  if (uid !== session.user.id && !isPI) {
+    document.getElementById('report-content').innerHTML =
+      '<div class="empty">You can only view your own report.</div>';
+    return;
+  }
+
+  const { data: profile } = await supabaseClient
+    .from('profiles').select('*').eq('id', uid).single();
+  if (!profile) {
+    document.getElementById('report-content').innerHTML =
+      '<div class="empty">Could not load profile.</div>';
+    return;
+  }
+
+  // Projects this person owns plus the ones they collaborate on.
+  const collabIds = (allCollabs || []).filter(c => c.profile_id === uid).map(c => c.project_id);
+  let projQuery = supabaseClient.from('projects')
+    .select('*, project_stages(*), stage_history(*)')
+    .eq('status', 'active');
+  projQuery = collabIds.length
+    ? projQuery.or(`owner_id.eq.${uid},id.in.(${collabIds.join(',')})`)
+    : projQuery.eq('owner_id', uid);
+  const { data: projects } = await projQuery;
+
+  const processed = withMembers((projects || []).map(process)).sort((a, b) => {
+    const aOwn = a.owner_id === uid ? 0 : 1, bOwn = b.owner_id === uid ? 0 : 1;
+    if (aOwn !== bOwn) return aOwn - bOwn;                       // owned first, then collaborations
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
+
+  renderReport(
+    { title: profile.full_name, subtitle: profile.role, focusUid: uid },
+    processed, nameById,
+  );
+})();
+
+// Normalise a project row: sort stages/history and precompute the current
+// stage plus how long it has been in it (used for sorting and display).
+function process(p) {
+  const stages = (p.project_stages || []).slice().sort((a, b) => a.sort_order - b.sort_order);
+  const history = (p.stage_history || []).slice().sort(
+    (a, b) => new Date(a.entered_at) - new Date(b.entered_at));
+  const currentEntry = history.find(h => !h.exited_at) || history[history.length - 1] || null;
+  const currentIndex = currentEntry ? stages.findIndex(s => s.name === currentEntry.stage_name) : -1;
+  const stageMs = currentEntry ? (Date.now() - new Date(currentEntry.entered_at).getTime()) : 0;
+  return { ...p, project_stages: stages, stage_history: history,
+    _currentEntry: currentEntry, _currentIndex: currentIndex, _stageMs: stageMs };
+}
+
+function fmtDate(iso) {
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function fmtDuration(ms) {
+  const weeks = ms / WEEK_MS;
+  if (weeks < 1.5) return Math.max(Math.round(weeks * 7), 0) + 'd';
+  return Math.round(weeks) + ' wk';
+}
+
+function renderReport(header, projects, nameById) {
+  const today = new Date().toLocaleDateString(undefined, {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+  });
+  const now = new Date();
+
+  const cards = projects.map(p => {
+    const stages = p.project_stages;
+    const currentIndex = p._currentIndex;
+    const ageWeeks = Math.round((now - new Date(p.created_at)) / WEEK_MS);
+
+    const stageItems = stages.map((s, i) => {
+      const targetDate = s.target_date ? new Date(s.target_date) : null;
+      const isOverdue = targetDate && i === currentIndex && targetDate < now;
+      let cls = 'stage-item ';
+      if (i < currentIndex) cls += 'stage-done';
+      else if (i === currentIndex) cls += isOverdue ? 'stage-current stage-overdue' : 'stage-current';
+      else cls += 'stage-future';
+
+      let dateStr = '';
+      if (targetDate) {
+        if (i < currentIndex) dateStr = '✓ ' + fmtDate(s.target_date);
+        else if (isOverdue) dateStr = '⚠ due ' + fmtDate(s.target_date);
+        else dateStr = 'by ' + fmtDate(s.target_date);
+      }
+
+      return `<div class="${cls}">
+        <span class="stage-dot"></span>
+        <span class="stage-item-name">${esc(s.name)}</span>
+        <span class="stage-date">${esc(dateStr)}</span>
+      </div>`;
+    }).join('');
+
+    // Team labeling: a lab-wide report lists everyone on the project; a personal
+    // report names everyone else on it (owner + other collaborators, equally).
+    let peopleStr = '';
+    if (header.focusUid) {
+      const others = (p._memberIds || []).filter(id => id !== header.focusUid)
+        .map(id => nameById[id]).filter(Boolean);
+      if (others.length) peopleStr = `👥 with ${others.map(esc).join(', ')} · `;
+    } else if (header.listTeam) {
+      const members = (p._memberIds || []).map(id => nameById[id]).filter(Boolean);
+      if (members.length) peopleStr = `👥 ${members.map(esc).join(', ')} · `;
+    }
+    const currentName = currentIndex >= 0 ? stages[currentIndex].name
+      : (p._currentEntry ? p._currentEntry.stage_name : null);
+    const stageTiming = p._currentEntry && currentName
+      ? ` · ${esc(fmtDuration(p._stageMs))} in “${esc(currentName)}”` : '';
+    const venue = p.target_venue ? ` · ${esc(p.target_venue)}` : '';
+    const collab = p.collaborators ? `<div class="proj-card-meta" style="margin-top:2px;">w/ ${esc(p.collaborators)}</div>` : '';
+    const notes = p.notes ? `<div class="proj-notes">📝 ${esc(p.notes)}</div>` : '';
+
+    return `<div class="proj-card">
+      <div class="proj-card-title">${esc(p.title)}</div>
+      <div class="proj-card-meta">${peopleStr}${ageWeeks} wk active${venue}${stageTiming}</div>
+      ${collab}
+      <div class="stage-list">${stageItems}</div>
+      ${notes}
+    </div>`;
+  }).join('');
+
+  document.title = `Report — ${header.title}`;
+  document.getElementById('report-content').innerHTML = `
+    <div class="report-hd">
+      <h1>${esc(header.title)}</h1>
+      <div class="sub">${esc(header.subtitle)} · ${today}</div>
+    </div>
+    ${cards || '<div class="empty">No active projects.</div>'}`;
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+</script>
+</body>
+</html>
